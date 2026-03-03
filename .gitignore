@@ -1,0 +1,52 @@
+# Xcode
+build/
+DerivedData/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+xcuserdata/
+*.xccheckout
+*.moved-aside
+*.xcuserstate
+*.xcscmblueprint
+
+# Swift Package Manager
+.swiftpm/
+.build/
+Packages/
+Package.resolved
+
+# CocoaPods
+Pods/
+*.xcworkspace
+!default.xcworkspace
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# 应用运行时生成的文件
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+blobs/
+
+# 临时文件
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+
+# Claude Code 本地配置
+.claude/settings.local.json
+
+# 归档目录
+.archive/
+
+# 备份文件
+backups/
