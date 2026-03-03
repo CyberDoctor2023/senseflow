@@ -1,8 +1,6 @@
 # SenseFlow
 
 > SenseFlow 不是剪贴板工具，而是一个基于"输入流"的隐形 AI Agent。
-> ![Uploading image.png…]()
-
 
 ![Version](https://img.shields.io/badge/version-0.5.0-blue)
 ![macOS](https://img.shields.io/badge/macOS-14.0%2B-green)
