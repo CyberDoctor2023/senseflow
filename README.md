@@ -10,6 +10,8 @@
 ![Architecture](https://img.shields.io/badge/architecture-Clean%20Architecture-brightgreen)
 ![Apple Silicon](https://img.shields.io/badge/chip-Apple%20Silicon-black)
 
+![SenseFlow](docs/images/hero.png)
+
 ## 核心理念
 
 我们利用"剪贴板"这一操作系统最底层的数据交换口，构建一个低用户可见面的智能体：
