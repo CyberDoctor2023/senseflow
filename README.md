@@ -302,8 +302,7 @@ xcodebuild -project SenseFlow.xcodeproj \
 
 ## 已知问题
 
-1. **Debug 模式权限问题**: 每次 Cmd+R 需要重新授权 Accessibility（Release 版本无此问题）
-2. **设置面板需要 macOS 13.0+**: 低版本系统会提示升级
+1. **设置面板需要 macOS 13.0+**: 低版本系统会提示升级
 
 ## 致谢
 
