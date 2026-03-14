@@ -78,6 +78,7 @@ struct PrivacySettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+
                     }
                     .padding(.vertical, DesignSystem.Spacing.xs)
                 }
@@ -193,7 +194,7 @@ struct PrivacySettingsView: View {
         Task {
             let settings = await UNUserNotificationCenter.current().notificationSettings()
             await MainActor.run {
-                hasNotificationPermission = settings.authorizationStatus == .authorized
+                hasNotificationPermission = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
             }
         }
 
@@ -217,6 +218,7 @@ struct PrivacySettingsView: View {
         skipOnboardingPermissions = false
         print("✅ skipOnboardingPermissions 标志已设置为 false")
     }
+
 }
 
 #Preview {

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Cocoa
 import UserNotifications
 
 /// 通知服务管理器（单例）
@@ -30,15 +31,35 @@ class NotificationService {
 
     /// 请求通知权限
     func requestAuthorization() async {
-        do {
-            let granted = try await center.requestAuthorization(options: [.alert, .sound])
-            if granted {
-                print("✅ 通知权限已授予")
-            } else {
-                print("⚠️ 用户拒绝了通知权限")
+        let settings = await center.notificationSettings()
+
+        switch settings.authorizationStatus {
+        case .notDetermined:
+            do {
+                let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
+                if granted {
+                    print("✅ 通知权限已授予")
+                } else {
+                    print("⚠️ 用户拒绝了通知权限")
+                    await MainActor.run {
+                        showPermissionAlert()
+                    }
+                }
+            } catch {
+                print("❌ 通知权限请求失败: \(error.localizedDescription)")
             }
-        } catch {
-            print("❌ 通知权限请求失败: \(error.localizedDescription)")
+
+        case .denied:
+            print("⚠️ 通知权限状态为 denied，系统不会重复弹窗")
+            await MainActor.run {
+                showPermissionAlert()
+            }
+
+        case .authorized, .provisional:
+            print("✅ 通知权限已可用（状态: \(settings.authorizationStatus.rawValue)）")
+
+        @unknown default:
+            print("⚠️ 未知通知权限状态: \(settings.authorizationStatus.rawValue)")
         }
     }
 
@@ -46,7 +67,7 @@ class NotificationService {
     /// - Returns: 是否已授权
     func checkPermission() async -> Bool {
         let settings = await center.notificationSettings()
-        return settings.authorizationStatus == .authorized
+        return settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
     }
 
     /// 检查通知权限状态（同步属性）
@@ -61,7 +82,7 @@ class NotificationService {
         }
 
         semaphore.wait()
-        return status == .authorized
+        return status == .authorized || status == .provisional
     }
 
     /// 显示通知
@@ -121,5 +142,39 @@ class NotificationService {
     /// - Parameter identifier: 通知标识符
     func removeNotification(identifier: String) {
         center.removeDeliveredNotifications(withIdentifiers: [identifier])
+    }
+
+    // MARK: - Private Helpers
+
+    @MainActor
+    private func showPermissionAlert() {
+        let alert = NSAlert()
+        alert.messageText = "通知权限未授予"
+        alert.informativeText = "系统已记录你之前的选择，macOS 不会重复弹出通知授权。请在系统设置中手动开启 SenseFlow 的通知权限。"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "打开系统设置")
+        alert.addButton(withTitle: "稍后")
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            openNotificationSettings()
+        }
+    }
+
+    @MainActor
+    private func openNotificationSettings() {
+        let candidates = [
+            "x-apple.systempreferences:com.apple.Notifications-Settings.extension",
+            "x-apple.systempreferences:com.apple.preference.notifications"
+        ]
+
+        for candidate in candidates {
+            if let url = URL(string: candidate), NSWorkspace.shared.open(url) {
+                print("🔓 已打开系统设置 - 通知")
+                return
+            }
+        }
+
+        NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app"))
+        print("🔓 已打开系统设置")
     }
 }

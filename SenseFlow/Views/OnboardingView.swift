@@ -140,7 +140,7 @@ struct OnboardingView: View {
     /// 检查通知权限
     private func checkNotificationPermission() async -> Bool {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
-        return settings.authorizationStatus == .authorized
+        return settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
     }
 
     /// 权限状态结构
