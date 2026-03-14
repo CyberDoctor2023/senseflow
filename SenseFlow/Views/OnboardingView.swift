@@ -8,20 +8,13 @@
 
 import SwiftUI
 import ApplicationServices
-import UserNotifications
 import ScreenCaptureKit
 
 /// SwiftUI Onboarding View
 struct OnboardingView: View {
 
     @Environment(\.dismiss) private var dismiss
-
-    @State private var hasAccessibility = false
-    @State private var hasScreenRecording = false
-    @State private var hasNotification = false
-
-    // 定时器，用于持续检查权限状态
-    @State private var permissionCheckTimer: Timer?
+    @ObservedObject private var permissionCoordinator = PermissionStatusCoordinator.shared
 
     var body: some View {
         VStack(spacing: DesignSystem.Spacing.xxl) {
@@ -47,7 +40,7 @@ struct OnboardingView: View {
                     icon: "hand.raised.fill",
                     title: Strings.Permissions.accessibility,
                     subtitle: Strings.Permissions.accessibilityDesc,
-                    isGranted: hasAccessibility,
+                    isGranted: permissionCoordinator.snapshot.accessibilityGranted,
                     action: requestAccessibility
                 )
             }
@@ -63,7 +56,7 @@ struct OnboardingView: View {
                     icon: "camera.metering.matrix",
                     title: Strings.Permissions.screenRecording,
                     subtitle: Strings.Permissions.screenRecordingDesc,
-                    isGranted: hasScreenRecording,
+                    isGranted: permissionCoordinator.snapshot.screenRecordingGranted,
                     action: requestScreenRecording
                 )
 
@@ -71,7 +64,7 @@ struct OnboardingView: View {
                     icon: "bell.fill",
                     title: Strings.Permissions.notification,
                     subtitle: Strings.Permissions.notificationDesc,
-                    isGranted: hasNotification,
+                    isGranted: permissionCoordinator.snapshot.notificationGranted,
                     action: requestNotification
                 )
             }
@@ -91,7 +84,7 @@ struct OnboardingView: View {
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(!hasAccessibility)
+                .disabled(!permissionCoordinator.snapshot.accessibilityGranted)
             }
             .padding(.bottom, Constants.Onboarding.bottomPadding)
 
@@ -103,63 +96,11 @@ struct OnboardingView: View {
         .padding(.horizontal, Constants.Onboarding.horizontalPadding)
         .frame(width: Constants.DialogWindow.onboarding.width, height: Constants.DialogWindow.onboarding.height)
         .onAppear {
-            checkPermissions()
-            startPermissionCheckTimer()
+            permissionCoordinator.start(consumer: .onboarding)
         }
         .onDisappear {
-            stopPermissionCheckTimer()
+            permissionCoordinator.stop(consumer: .onboarding)
         }
-    }
-
-    // MARK: - Permission Checks
-
-    private func checkPermissions() {
-        Task {
-            let status = await checkAllPermissions()
-            await MainActor.run {
-                hasAccessibility = status.accessibility
-                hasScreenRecording = status.screenRecording
-                hasNotification = status.notification
-            }
-        }
-    }
-
-    /// 检查所有权限状态
-    private func checkAllPermissions() async -> PermissionStatus {
-        let accessibility = AXIsProcessTrusted()
-        let screenRecording = CGPreflightScreenCaptureAccess()
-        let notification = await checkNotificationPermission()
-
-        return PermissionStatus(
-            accessibility: accessibility,
-            screenRecording: screenRecording,
-            notification: notification
-        )
-    }
-
-    /// 检查通知权限
-    private func checkNotificationPermission() async -> Bool {
-        let settings = await UNUserNotificationCenter.current().notificationSettings()
-        return settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
-    }
-
-    /// 权限状态结构
-    private struct PermissionStatus {
-        let accessibility: Bool
-        let screenRecording: Bool
-        let notification: Bool
-    }
-
-    private func startPermissionCheckTimer() {
-        // 每 0.5 秒检查一次权限状态，以便实时更新 UI
-        permissionCheckTimer = Timer.scheduledTimer(withTimeInterval: BusinessRules.Permissions.checkInterval, repeats: true) { _ in
-            checkPermissions()
-        }
-    }
-
-    private func stopPermissionCheckTimer() {
-        permissionCheckTimer?.invalidate()
-        permissionCheckTimer = nil
     }
 
     // MARK: - Permission Requests
@@ -170,7 +111,7 @@ struct OnboardingView: View {
 
         // Recheck after delay
         DispatchQueue.main.asyncAfter(deadline: .now() + BusinessRules.Permissions.recheckDelayLong) {
-            checkPermissions()
+            permissionCoordinator.refreshNow()
         }
     }
 
@@ -181,24 +122,24 @@ struct OnboardingView: View {
 
                 await MainActor.run {
                     DispatchQueue.main.asyncAfter(deadline: .now() + BusinessRules.Permissions.recheckDelayLong) {
-                        checkPermissions()
+                        permissionCoordinator.refreshNow()
                     }
                 }
             } catch {
                 print("⚠️ Screen recording permission denied: \(error)")
                 await MainActor.run {
-                    checkPermissions()
+                    permissionCoordinator.refreshNow()
                 }
             }
         }
     }
 
     private func requestNotification() {
-        Task {
+        Task { @MainActor in
             await NotificationService.shared.requestAuthorization()
 
             DispatchQueue.main.asyncAfter(deadline: .now() + BusinessRules.Permissions.recheckDelayShort) {
-                checkPermissions()
+                permissionCoordinator.refreshNow()
             }
         }
     }

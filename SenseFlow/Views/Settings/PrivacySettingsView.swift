@@ -8,16 +8,11 @@
 
 import SwiftUI
 import Cocoa                // For NSWindow, NSHostingController
-import ApplicationServices  // For AXIsProcessTrusted()
-import UserNotifications    // For notification permission check
 
 /// 隐私设置（使用 @Bindable 接收 SettingsModel 双向绑定）
 struct PrivacySettingsView: View {
     @Bindable var model: SettingsModel
-
-    @State private var hasAccessibilityPermission = false
-    @State private var hasScreenRecordingPermission = false
-    @State private var hasNotificationPermission = false
+    @ObservedObject private var permissionCoordinator = PermissionStatusCoordinator.shared
     @State private var skipOnboardingPermissions = false
 
     var body: some View {
@@ -26,12 +21,12 @@ struct PrivacySettingsView: View {
                 Section(Strings.PrivacySettings.privacySection) {
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                         HStack(spacing: DesignSystem.Spacing.sm) {
-                            Image(systemName: hasAccessibilityPermission ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                                .foregroundStyle(hasAccessibilityPermission ? .green : .orange)
+                            Image(systemName: permissionCoordinator.snapshot.accessibilityGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                .foregroundStyle(permissionCoordinator.snapshot.accessibilityGranted ? .green : .orange)
                                 .symbolRenderingMode(.multicolor)
                                 .font(.caption)
 
-                            Text(hasAccessibilityPermission ? Strings.PrivacySettings.accessibilityGranted : Strings.PrivacySettings.accessibilityDenied)
+                            Text(permissionCoordinator.snapshot.accessibilityGranted ? Strings.PrivacySettings.accessibilityGranted : Strings.PrivacySettings.accessibilityDenied)
                                 .font(.subheadline)
                                 .fontWeight(.medium)
                         }
@@ -45,12 +40,12 @@ struct PrivacySettingsView: View {
 
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                         HStack(spacing: DesignSystem.Spacing.sm) {
-                            Image(systemName: hasScreenRecordingPermission ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                                .foregroundStyle(hasScreenRecordingPermission ? .green : .orange)
+                            Image(systemName: permissionCoordinator.snapshot.screenRecordingGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                .foregroundStyle(permissionCoordinator.snapshot.screenRecordingGranted ? .green : .orange)
                                 .symbolRenderingMode(.multicolor)
                                 .font(.caption)
 
-                            Text(hasScreenRecordingPermission ? Strings.PrivacySettings.screenRecordingGranted : Strings.PrivacySettings.screenRecordingDenied)
+                            Text(permissionCoordinator.snapshot.screenRecordingGranted ? Strings.PrivacySettings.screenRecordingGranted : Strings.PrivacySettings.screenRecordingDenied)
                                 .font(.subheadline)
                                 .fontWeight(.medium)
                         }
@@ -64,12 +59,12 @@ struct PrivacySettingsView: View {
 
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                         HStack(spacing: DesignSystem.Spacing.sm) {
-                            Image(systemName: hasNotificationPermission ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                                .foregroundStyle(hasNotificationPermission ? .green : .orange)
+                            Image(systemName: permissionCoordinator.snapshot.notificationGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                .foregroundStyle(permissionCoordinator.snapshot.notificationGranted ? .green : .orange)
                                 .symbolRenderingMode(.multicolor)
                                 .font(.caption)
 
-                            Text(hasNotificationPermission ? Strings.PrivacySettings.notificationGranted : Strings.PrivacySettings.notificationDenied)
+                            Text(permissionCoordinator.snapshot.notificationGranted ? Strings.PrivacySettings.notificationGranted : Strings.PrivacySettings.notificationDenied)
                                 .font(.subheadline)
                                 .fontWeight(.medium)
                         }
@@ -181,23 +176,20 @@ struct PrivacySettingsView: View {
             .formStyle(.grouped)
             .compatibleControlSize()
             .onAppear {
-                checkPermissions()
+                permissionCoordinator.start(consumer: .settings)
+                syncGuideState()
+            }
+            .onDisappear {
+                permissionCoordinator.stop(consumer: .settings)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                syncGuideState()
             }
     }
 
     // MARK: - Private Methods
 
-    private func checkPermissions() {
-        hasAccessibilityPermission = AXIsProcessTrusted()
-        hasScreenRecordingPermission = ScreenCaptureManager.shared.checkPermission()
-
-        Task {
-            let settings = await UNUserNotificationCenter.current().notificationSettings()
-            await MainActor.run {
-                hasNotificationPermission = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
-            }
-        }
-
+    private func syncGuideState() {
         skipOnboardingPermissions = UserDefaults.standard.bool(forKey: UserDefaultsKeys.skipOnboardingPermissions)
     }
 
@@ -215,7 +207,7 @@ struct PrivacySettingsView: View {
 
         print("✅ 找到 AppDelegate")
         appDelegate.showOnboardingWindow()
-        skipOnboardingPermissions = false
+        syncGuideState()
         print("✅ skipOnboardingPermissions 标志已设置为 false")
     }
 
