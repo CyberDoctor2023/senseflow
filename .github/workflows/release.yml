@@ -60,6 +60,17 @@ jobs:
           security default-keychain -d user -s "$KEYCHAIN_PATH"
 
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          echo "SPM_CLONED_DIR=$RUNNER_TEMP/spm-cloned" >> "$GITHUB_ENV"
+
+      - name: Resolve package dependencies
+        run: |
+          set -euo pipefail
+          rm -rf "$SPM_CLONED_DIR"
+          mkdir -p "$SPM_CLONED_DIR"
+          xcodebuild -resolvePackageDependencies \
+            -project SenseFlow.xcodeproj \
+            -scheme SenseFlow \
+            -clonedSourcePackagesDirPath "$SPM_CLONED_DIR"
 
       - name: Build for Apple Silicon
         env:
@@ -76,7 +87,8 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="$MACOS_SIGNING_IDENTITY" \
             DEVELOPMENT_TEAM="$MACOS_TEAM_ID" \
-            OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH"
+            OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH" \
+            -clonedSourcePackagesDirPath "$SPM_CLONED_DIR"
 
       - name: Verify app signature
         run: |
