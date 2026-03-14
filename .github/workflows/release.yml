@@ -72,10 +72,7 @@ jobs:
             -scheme SenseFlow \
             -clonedSourcePackagesDirPath "$SPM_CLONED_DIR"
 
-      - name: Build for Apple Silicon
-        env:
-          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
-          MACOS_TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
+      - name: Build for Apple Silicon (unsigned)
         run: |
           set -euo pipefail
           xcodebuild -project SenseFlow.xcodeproj \
@@ -84,11 +81,42 @@ jobs:
             -arch arm64 \
             -derivedDataPath build \
             ONLY_ACTIVE_ARCH=NO \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="$MACOS_SIGNING_IDENTITY" \
-            DEVELOPMENT_TEAM="$MACOS_TEAM_ID" \
-            OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
             -clonedSourcePackagesDirPath "$SPM_CLONED_DIR"
+
+      - name: Sign app bundle
+        env:
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          APP_PATH="build/Build/Products/Release/SenseFlow.app"
+          ENTITLEMENTS_PATH="SenseFlow/SenseFlow.entitlements"
+
+          if [ ! -d "$APP_PATH" ]; then
+            echo "::error::App bundle not found at $APP_PATH"
+            exit 1
+          fi
+
+          SIGN_ARGS=(
+            --force
+            --options runtime
+            --sign "$MACOS_SIGNING_IDENTITY"
+            --keychain "$KEYCHAIN_PATH"
+          )
+
+          if [ -f "$ENTITLEMENTS_PATH" ]; then
+            SIGN_ARGS+=(--entitlements "$ENTITLEMENTS_PATH")
+          fi
+
+          # Sign nested code first, then top-level bundle.
+          if [ -d "$APP_PATH/Contents/Frameworks" ]; then
+            while IFS= read -r -d '' framework; do
+              codesign "${SIGN_ARGS[@]}" "$framework"
+            done < <(find "$APP_PATH/Contents/Frameworks" -type d -name "*.framework" -print0)
+          fi
+
+          codesign "${SIGN_ARGS[@]}" "$APP_PATH"
 
       - name: Verify app signature
         run: |
