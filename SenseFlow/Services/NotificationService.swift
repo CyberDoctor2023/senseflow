@@ -37,6 +37,9 @@ class NotificationService {
         // 菜单栏应用在非激活态下可能导致权限弹窗不出现，先激活应用
         NSApp.activate(ignoringOtherApps: true)
 
+        let bundleID = Bundle.main.bundleIdentifier ?? "unknown"
+        print("🔔 通知权限请求来源 bundle=\(bundleID) path=\(Bundle.main.bundlePath)")
+
         let settings = await center.notificationSettings()
         print("🔔 通知权限当前状态: \(statusText(settings.authorizationStatus))")
 
@@ -44,10 +47,13 @@ class NotificationService {
         case .notDetermined:
             do {
                 let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
-                if granted {
+                let updated = await center.notificationSettings()
+                let effectiveGranted = granted && isAuthorized(updated.authorizationStatus)
+
+                if effectiveGranted {
                     print("✅ 通知权限已授予")
                 } else {
-                    print("⚠️ 用户拒绝了通知权限")
+                    print("⚠️ 通知权限未授予（post-request status: \(statusText(updated.authorizationStatus))）")
                     await MainActor.run {
                         showPermissionAlert()
                     }
