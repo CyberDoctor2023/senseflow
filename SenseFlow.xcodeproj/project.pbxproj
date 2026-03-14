@@ -112,7 +112,7 @@
 		B4000000000000000000001 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4000000000000000000001 /* SettingsView.swift */; };
 		B5000000000000000000001 /* GeneralSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5000000000000000000001 /* GeneralSettingsView.swift */; };
 		B6000000000000000000001 /* ShortcutSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6000000000000000000001 /* ShortcutSettingsView.swift */; };
-		B627C52AC7250BA897825029 /* CompatiblePhaseAnimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CE4B6E79CFBF6A63F0FB3E9 /* CompatiblePhaseAnimator.swift */; };
+		B627C52AC7250BA897825029 /* Components/CompatiblePhaseAnimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CE4B6E79CFBF6A63F0FB3E9 /* Components/CompatiblePhaseAnimator.swift */; };
 		B66A94B492AF0480B33A43EF /* ScreenCaptureManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0310A569D48FD52547CDE6B6 /* ScreenCaptureManager.swift */; };
 		B7000000000000000000001 /* PrivacySettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7000000000000000000001 /* PrivacySettingsView.swift */; };
 		B8000000000000000000001 /* OCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8000000000000000000001 /* OCRService.swift */; };
@@ -198,7 +198,7 @@
 		1661FCAAAA57C6585307D1EE /* BlobFileManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BlobFileManager.swift; sourceTree = "<group>"; };
 		19418290B336F1AB2CBB33F4 /* DeveloperOptionsSettingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DeveloperOptionsSettingsView.swift; sourceTree = "<group>"; };
 		1A72917AEA5EB102C4B34292 /* WindowPositioner.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WindowPositioner.swift; sourceTree = "<group>"; };
-		1CE4B6E79CFBF6A63F0FB3E9 /* CompatiblePhaseAnimator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Components/CompatiblePhaseAnimator.swift; sourceTree = "<group>"; };
+		1CE4B6E79CFBF6A63F0FB3E9 /* Components/CompatiblePhaseAnimator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Components/CompatiblePhaseAnimator.swift; sourceTree = "<group>"; };
 		2247D9FDF5C7724FD7A62D9B /* ClipboardFilterManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ClipboardFilterManager.swift; sourceTree = "<group>"; };
 		23AEEBEBBF580915721A75E8 /* SQLitePromptToolRepository.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SQLitePromptToolRepository.swift; path = SenseFlow/Adapters/Repositories/SQLitePromptToolRepository.swift; sourceTree = "<group>"; };
 		24C65C82FB82362BB662702C /* AIServiceProtocol.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AIServiceProtocol.swift; path = SenseFlow/Domain/Protocols/AIServiceProtocol.swift; sourceTree = "<group>"; };
@@ -484,7 +484,7 @@
 			isa = PBXGroup;
 			children = (
 				EE882D780E342410426BF301 /* SettingsFormContainer.swift */,
-				1CE4B6E79CFBF6A63F0FB3E9 /* CompatiblePhaseAnimator.swift */,
+				1CE4B6E79CFBF6A63F0FB3E9 /* Components/CompatiblePhaseAnimator.swift */,
 				8DDB3ED29FEC8F647B7ECF34 /* MenuBarIconView.swift */,
 				4E0F9B3631A8D665FDAF7C71 /* PinIconView.swift */,
 				3917A2BFB28F28C837C024C3 /* PinIconView.swift */,
@@ -991,7 +991,7 @@
 			);
 			mainGroup = A1000007000000000000001;
 			packageReferences = (
-				04BC7F402F189BF8006978CE /* XCRemoteSwiftPackageReference "SQLite.swift" */,
+				04BC7F402F189BF8006978CE /* XCRemoteSwiftPackageReference "SQLite" */,
 				05BC7F412F189BF9006978CE /* XCRemoteSwiftPackageReference "OpenAI" */,
 				EADB05BA9241E78FBE51EF4E /* XCRemoteSwiftPackageReference "generative-ai-swift" */,
 				049B4FDD2F286E9000DB81C4 /* XCRemoteSwiftPackageReference "opentelemetry-swift" */,
@@ -1094,7 +1094,7 @@
 				FEDC6BB1302215AAA1AE029B /* DatabaseManager+PromptTools.swift in Sources */,
 				07456A118E62B0CB8F9577B1 /* SettingsFormContainer.swift in Sources */,
 				14B1882B3A912CF6BCF71F8E /* ViewModifiers+Compatibility.swift in Sources */,
-				B627C52AC7250BA897825029 /* CompatiblePhaseAnimator.swift in Sources */,
+				B627C52AC7250BA897825029 /* Components/CompatiblePhaseAnimator.swift in Sources */,
 				2F31426C0A8543F1DBAB2859 /* ClipboardRepository.swift in Sources */,
 				70BF8F2B21963646CFC5713F /* PromptToolRepository.swift in Sources */,
 				0C65FAD9CB9E5C64F507095D /* HotKeyRegistry.swift in Sources */,
@@ -1346,7 +1346,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = FPVWZ792P2;
+				DEVELOPMENT_TEAM = 6S5C826R55;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = SenseFlow/Info.plist;
@@ -1378,7 +1378,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = FPVWZ792P2;
+				DEVELOPMENT_TEAM = 6S5C826R55;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = SenseFlow/Info.plist;
@@ -1458,7 +1458,7 @@
 				minimumVersion = 2.3.0;
 			};
 		};
-		04BC7F402F189BF8006978CE /* XCRemoteSwiftPackageReference "SQLite.swift" */ = {
+		04BC7F402F189BF8006978CE /* XCRemoteSwiftPackageReference "SQLite" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/stephencelis/SQLite.swift";
 			requirement = {
@@ -1510,7 +1510,7 @@
 		};
 		04BC7F412F189BF8006978CE /* SQLite */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 04BC7F402F189BF8006978CE /* XCRemoteSwiftPackageReference "SQLite.swift" */;
+			package = 04BC7F402F189BF8006978CE /* XCRemoteSwiftPackageReference "SQLite" */;
 			productName = SQLite;
 		};
 		05BC7F422F189BF9006978CE /* OpenAI */ = {
