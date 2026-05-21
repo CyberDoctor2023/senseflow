@@ -10,6 +10,221 @@ import Foundation
 import OpenAI
 import OpenTelemetryApi
 
+/// Local Codex authentication status safe to show in Settings.
+struct CodexAuthStatus: Equatable {
+    /// Whether a usable Codex ChatGPT access token is available locally.
+    let isAuthenticated: Bool
+
+    /// Redacted account identifier metadata from Codex auth.
+    let accountID: String?
+
+    /// ChatGPT plan type metadata, when present in the Codex token.
+    let planType: String?
+
+    /// Profile email metadata, when present in the Codex token.
+    let email: String?
+
+    /// Access token expiry decoded from the JWT payload, when available.
+    let expiresAt: Date?
+
+    /// Human-readable status message for Settings.
+    let message: String
+
+    static func loggedOut(_ message: String = "未登录 Codex") -> CodexAuthStatus {
+        CodexAuthStatus(
+            isAuthenticated: false,
+            accountID: nil,
+            planType: nil,
+            email: nil,
+            expiresAt: nil,
+            message: message
+        )
+    }
+}
+
+/// Local Codex credentials used only for authenticated requests.
+struct CodexAuthCredentials {
+    /// Bearer token read from local Codex auth state.
+    let accessToken: String
+
+    /// ChatGPT account identifier required by Codex backend for workspace routing.
+    let accountID: String?
+}
+
+/// Reads local Codex auth state and launches the official Codex browser login flow.
+final class CodexAuthManager {
+    static let shared = CodexAuthManager()
+
+    private let authFileURL: URL
+    private var activeLoginProcess: Process?
+
+    private init(
+        authFileURL: URL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".codex")
+            .appendingPathComponent("auth.json")
+    ) {
+        self.authFileURL = authFileURL
+    }
+
+    /// Current Codex auth status with all tokens redacted.
+    var currentStatus: CodexAuthStatus {
+        do {
+            let snapshot = try loadAuthSnapshot()
+            return snapshot.status
+        } catch {
+            return .loggedOut(error.localizedDescription)
+        }
+    }
+
+    /// Credentials for Codex-authenticated network requests.
+    func credentials() throws -> CodexAuthCredentials {
+        let snapshot = try loadAuthSnapshot()
+        guard snapshot.status.isAuthenticated else {
+            throw PromptToolError.aiServiceNotConfigured
+        }
+
+        return CodexAuthCredentials(
+            accessToken: snapshot.accessToken,
+            accountID: snapshot.accountID
+        )
+    }
+
+    /// Starts the official `codex login` command, which opens the browser login flow.
+    func startBrowserLogin() throws {
+        let process = Process()
+        let executable = resolveCodexExecutable()
+
+        if executable.lastPathComponent == "env" {
+            process.executableURL = executable
+            process.arguments = ["codex", "login"]
+        } else {
+            process.executableURL = executable
+            process.arguments = ["login"]
+        }
+
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+        process.terminationHandler = { [weak self] finishedProcess in
+            guard let activeProcess = self?.activeLoginProcess,
+                  finishedProcess === activeProcess else { return }
+            self?.activeLoginProcess = nil
+        }
+
+        try process.run()
+        activeLoginProcess = process
+    }
+
+    private struct AuthFile: Decodable {
+        let authMode: String?
+        let tokens: Tokens?
+
+        enum CodingKeys: String, CodingKey {
+            case authMode = "auth_mode"
+            case tokens
+        }
+    }
+
+    private struct Tokens: Decodable {
+        let accessToken: String?
+        let accountID: String?
+
+        enum CodingKeys: String, CodingKey {
+            case accessToken = "access_token"
+            case accountID = "account_id"
+        }
+    }
+
+    private struct AuthSnapshot {
+        let accessToken: String
+        let accountID: String?
+        let status: CodexAuthStatus
+    }
+
+    private func loadAuthSnapshot() throws -> AuthSnapshot {
+        guard FileManager.default.fileExists(atPath: authFileURL.path) else {
+            throw PromptToolError.apiError("未找到 Codex 登录信息，请先登录 Codex")
+        }
+
+        let data = try Data(contentsOf: authFileURL)
+        let authFile = try JSONDecoder().decode(AuthFile.self, from: data)
+        guard authFile.authMode?.lowercased() == "chatgpt",
+              let accessToken = authFile.tokens?.accessToken,
+              !accessToken.isEmpty else {
+            throw PromptToolError.apiError("未找到 Codex ChatGPT 登录信息")
+        }
+
+        let metadata = decodeTokenMetadata(accessToken)
+        if let expiresAt = metadata.expiresAt, expiresAt <= Date() {
+            throw PromptToolError.apiError("Codex 登录已过期，请重新登录")
+        }
+
+        let accountID = authFile.tokens?.accountID ?? metadata.accountID
+        let status = CodexAuthStatus(
+            isAuthenticated: true,
+            accountID: accountID,
+            planType: metadata.planType,
+            email: metadata.email,
+            expiresAt: metadata.expiresAt,
+            message: "已登录 Codex"
+        )
+
+        return AuthSnapshot(
+            accessToken: accessToken,
+            accountID: accountID,
+            status: status
+        )
+    }
+
+    private func resolveCodexExecutable() -> URL {
+        let candidates = [
+            "/opt/homebrew/bin/codex",
+            "/usr/local/bin/codex"
+        ]
+
+        for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
+            return URL(fileURLWithPath: path)
+        }
+
+        return URL(fileURLWithPath: "/usr/bin/env")
+    }
+
+    private func decodeTokenMetadata(_ accessToken: String) -> (accountID: String?, planType: String?, email: String?, expiresAt: Date?) {
+        let parts = accessToken.split(separator: ".")
+        guard parts.count == 3,
+              let payloadData = decodeBase64URL(String(parts[1])),
+              let payload = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any] else {
+            return (nil, nil, nil, nil)
+        }
+
+        let auth = payload["https://api.openai.com/auth"] as? [String: Any]
+        let profile = payload["https://api.openai.com/profile"] as? [String: Any]
+        let expiresAt: Date?
+        if let exp = payload["exp"] as? TimeInterval {
+            expiresAt = Date(timeIntervalSince1970: exp)
+        } else if let exp = payload["exp"] as? Int {
+            expiresAt = Date(timeIntervalSince1970: TimeInterval(exp))
+        } else {
+            expiresAt = nil
+        }
+
+        return (
+            auth?["chatgpt_account_id"] as? String,
+            auth?["chatgpt_plan_type"] as? String,
+            profile?["email"] as? String,
+            expiresAt
+        )
+    }
+
+    private func decodeBase64URL(_ value: String) -> Data? {
+        var base64 = value
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let paddingLength = (4 - base64.count % 4) % 4
+        base64.append(String(repeating: "=", count: paddingLength))
+        return Data(base64Encoded: base64)
+    }
+}
+
 /// AI 服务管理器（单例）
 /// 使用 MacPaw OpenAI SDK，支持 OpenAI 兼容 API（Claude/DeepSeek/Gemini 等）
 class AIService {
@@ -96,6 +311,8 @@ class AIService {
     private func generateWithCurrentService(systemPrompt: String, userInput: String) async throws -> String {
         if currentServiceType == .gemini {
             return try await generateWithGemini(systemPrompt: systemPrompt, userInput: userInput)
+        } else if currentServiceType == .codex {
+            return try await generateWithCodex(systemPrompt: systemPrompt, userInput: userInput)
         } else {
             return try await generateWithOpenAI(systemPrompt: systemPrompt, userInput: userInput)
         }
@@ -110,6 +327,88 @@ class AIService {
             apiKey: apiKey,
             modelName: getModel()
         )
+    }
+
+    /// 使用本机 Codex ChatGPT 登录态生成
+    private func generateWithCodex(systemPrompt: String, userInput: String) async throws -> String {
+        let serviceType = currentServiceType
+        let modelName = getModel()
+        let endpoint = buildEndpointURL(for: serviceType)
+        let credentials = try CodexAuthManager.shared.credentials()
+        let messagesPayload = buildTextMessagesPayload(systemPrompt: systemPrompt, userInput: userInput)
+        let requestBodyPayload = buildCodexResponsesRequestBodyPayload(
+            modelName: modelName,
+            systemPrompt: systemPrompt,
+            userInput: userInput
+        )
+        let headersPayload = buildRequestHeadersPayload(for: serviceType)
+        let parametersPayload: [String: Any] = [
+            "model": modelName,
+            "stream": false
+        ]
+
+        guard let url = URL(string: endpoint) else {
+            throw PromptToolError.apiError("Invalid Codex endpoint")
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 60
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
+        if let accountID = credentials.accountID, !accountID.isEmpty {
+            request.setValue(accountID, forHTTPHeaderField: "ChatGPT-Account-Id")
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: requestBodyPayload)
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw PromptToolError.apiError("Invalid Codex response")
+            }
+
+            guard (200..<300).contains(httpResponse.statusCode) else {
+                let responseText = String(data: data, encoding: .utf8) ?? "HTTP \(httpResponse.statusCode)"
+                throw PromptToolError.apiError("Codex request failed: \(responseText)")
+            }
+
+            let content = try extractCodexResponseText(from: data)
+            await recordRequestPayload(
+                toolName: APIRequestExecutionContext.toolName,
+                serviceType: serviceType,
+                modelName: modelName,
+                httpMethod: "POST",
+                endpoint: endpoint,
+                headersPayload: headersPayload,
+                requestBodyPayload: requestBodyPayload,
+                messagesPayload: messagesPayload,
+                parametersPayload: parametersPayload,
+                hasImage: false,
+                imageCount: 0,
+                responseText: content,
+                error: nil
+            )
+            return content
+        } catch {
+            let handledError = handleGenerationError(error)
+            await recordRequestPayload(
+                toolName: APIRequestExecutionContext.toolName,
+                serviceType: serviceType,
+                modelName: modelName,
+                httpMethod: "POST",
+                endpoint: endpoint,
+                headersPayload: headersPayload,
+                requestBodyPayload: requestBodyPayload,
+                messagesPayload: messagesPayload,
+                parametersPayload: parametersPayload,
+                hasImage: false,
+                imageCount: 0,
+                responseText: nil,
+                error: handledError
+            )
+            throw handledError
+        }
     }
 
     /// 使用 OpenAI 兼容服务生成
@@ -576,8 +875,51 @@ class AIService {
         ]
     }
 
+    /// 构建 Codex Responses 请求体
+    private func buildCodexResponsesRequestBodyPayload(modelName: String, systemPrompt: String, userInput: String) -> [String: Any] {
+        [
+            "model": modelName,
+            "instructions": systemPrompt,
+            "input": userInput,
+            "stream": false
+        ]
+    }
+
+    /// 提取 Codex Responses 文本输出
+    private func extractCodexResponseText(from data: Data) throws -> String {
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw PromptToolError.apiError("Invalid Codex JSON response")
+        }
+
+        if let outputText = object["output_text"] as? String {
+            return outputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        if let output = object["output"] as? [[String: Any]] {
+            let text = output
+                .compactMap { item -> String? in
+                    guard let content = item["content"] as? [[String: Any]] else { return nil }
+                    return content.compactMap { part in
+                        part["text"] as? String
+                    }.joined()
+                }
+                .joined(separator: "\n")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if !text.isEmpty {
+                return text
+            }
+        }
+
+        throw PromptToolError.apiError("No Codex response text received")
+    }
+
     /// 构建服务对应的请求 URL
     private func buildEndpointURL(for serviceType: AIServiceType) -> String {
+        if serviceType == .codex {
+            return "https://chatgpt.com/backend-api/codex/responses"
+        }
+
         let config = serviceType.sdkConfiguration
         let defaultPort = (config.scheme == "https" && config.port == 443) || (config.scheme == "http" && config.port == 80)
         let portSuffix = defaultPort ? "" : ":\(config.port)"

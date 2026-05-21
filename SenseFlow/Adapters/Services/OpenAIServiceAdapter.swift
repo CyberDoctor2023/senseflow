@@ -240,6 +240,7 @@ final class UserAPISettingsServiceAdapter: UserAPISettingsServiceProtocol {
         let keys = keychainManager.getAllSettingsKeys()
         return [
             .openai: keys.openaiKey ?? "",
+            .codex: "",
             .claude: keys.claudeKey ?? "",
             .gemini: keys.geminiKey ?? "",
             .deepseek: keys.deepseekKey ?? "",
@@ -271,6 +272,14 @@ final class UserAPISettingsServiceAdapter: UserAPISettingsServiceProtocol {
 
     func saveModelName(_ model: String, for serviceType: AIServiceType) {
         serviceType.saveSelectedModel(model)
+    }
+
+    var codexAuthStatus: CodexAuthStatus {
+        CodexAuthManager.shared.currentStatus
+    }
+
+    func startCodexBrowserLogin() throws {
+        try CodexAuthManager.shared.startBrowserLogin()
     }
 
     func testConnection() async throws -> Bool {

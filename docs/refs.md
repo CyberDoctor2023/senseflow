@@ -119,6 +119,56 @@
 
 ## Context7 查询记录
 
+### 2026-05-21: Codex 浏览器登录与 Auth API
+- **来源**: Context7 `/websites/developers_openai_codex`、本机 `codex login --help`
+- **要点**:
+  - Codex 支持 API key、ChatGPT 托管登录、外部 ChatGPT tokens 三类认证模式
+  - 浏览器式登录由 `codex login` 管理，本机 `codex login status` 可报告登录状态
+  - 本机 Codex ChatGPT auth 存在 `~/.codex/auth.json`，集成时必须避免展示 token
+  - Codex ChatGPT 后端使用 `https://chatgpt.com/backend-api/codex` 及 Responses 风格接口
+  - ChatGPT auth 请求需携带 bearer token，存在 account id 时携带 `ChatGPT-Account-Id`
+
+### 2026-05-21: MacPaw OpenAI Swift SDK 配置能力
+- **来源**: Context7 `/macpaw/openai`
+- **要点**:
+  - `OpenAI.Configuration` 支持 `token`、`host`、`basePath`、`customHeaders`、`parsingOptions`
+  - 非 OpenAI 兼容服务可使用 `.relaxed` 解析处理响应差异
+  - SDK 主要面向 OpenAI 兼容 API；Codex ChatGPT auth 走 Responses 风格时可单独用 URLSession
+
+### 2026-05-21: OpenAI Responses API 模型端点
+- **来源**: OpenAI 官方文档搜索 `developers.openai.com/api/docs/models`
+- **要点**:
+  - 当前 OpenAI 模型文档说明最新模型支持 `v1/responses`
+  - Codex 系列模型强调 Responses API 可用性
+  - SenseFlow 的 Codex auth 集成应优先保持 text-only，视觉能力后续单独设计
+
+### 2026-04-24: 多平台研究采集栈（GitHub REST API）
+- **来源**: Context7 `/websites/github_en_rest`
+- **要点**:
+  - 仓库 issues/comments 列表接口默认分页，`per_page` 上限 100，支持 `page` 翻页
+  - 推荐请求头使用 `Accept: application/vnd.github+json`
+  - `/repos/{owner}/{repo}/issues` 可能混入 PR，需用 `pull_request` 字段排除
+  - 仓库级 issue comments 支持 `since` 过滤，适合增量补采
+  - release 列表与 issues/comments 应分开采，避免把变更日志和用户抱怨混成一类证据
+
+### 2026-04-24: 多平台研究采集栈（YouTube Data API v3）
+- **来源**: Context7 `/websites/developers_google_youtube_v3`
+- **要点**:
+  - `commentThreads.list` 需显式传 `part` 与 `videoId`，`maxResults` 上限 100
+  - 回复需通过 `comments.list(parentId=...)` 继续拉取，不能只看顶级评论
+  - 分页依赖 `nextPageToken`，适合按视频逐个扩采
+  - 默认配额为 10,000 units/day，读操作通常 1 unit，请求量要纳入 run 预算
+  - 常见失败包括 `commentsDisabled`、`videoNotFound`、`forbidden`
+
+### 2026-04-24: 多平台研究采集栈（TikTokApi + Playwright）
+- **来源**: Context7 `/websites/davidteather_github_io_tiktok-api_tiktokapi`
+- **要点**:
+  - `create_sessions()` 是采集前置步骤，可配置 `ms_tokens`、`browser`、`timeout`
+  - 支持 `enable_session_recovery` 与 `allow_partial_sessions`，适合脆弱会话环境
+  - TikTok 发现阶段应先建视频池，再逐视频抓评论，不应把搜索页直接当最终语料
+  - 浏览器上下文可自定义，适合接真实 Chrome profile 或 CDP 连接
+  - 采集失败时优先做 session 级恢复，而不是把单次超时直接视为 run 失败
+
 ### 2026-02-04: 多显示器窗口定位最佳实践
 - **来源**: WebSearch + Context7 综合调研
 - **要点**:

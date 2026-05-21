@@ -222,6 +222,12 @@ protocol UserAPISettingsServiceProtocol {
     /// 保存单个服务模型名（空字符串表示回退默认）
     func saveModelName(_ model: String, for serviceType: AIServiceType)
 
+    /// 当前 Codex 浏览器登录状态（不包含 token）
+    var codexAuthStatus: CodexAuthStatus { get }
+
+    /// 启动官方 Codex 浏览器登录流程
+    func startCodexBrowserLogin() throws
+
     /// 测试当前 AI 服务连接
     func testConnection() async throws -> Bool
 }

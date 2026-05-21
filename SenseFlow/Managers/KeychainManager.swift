@@ -298,6 +298,8 @@ class KeychainManager {
         switch serviceType {
         case .openai:
             return get(account: Keys.openaiAPIKey)
+        case .codex:
+            return nil
         case .claude:
             return get(account: Keys.claudeAPIKey)
         case .gemini:
@@ -317,6 +319,8 @@ class KeychainManager {
         switch serviceType {
         case .openai:
             return save(key: key, for: Keys.openaiAPIKey)
+        case .codex:
+            return true  // Codex 使用本机浏览器登录，不保存 API Key
         case .claude:
             return save(key: key, for: Keys.claudeAPIKey)
         case .gemini:
@@ -332,6 +336,9 @@ class KeychainManager {
 
     /// 检查是否已配置 API Key
     func hasAPIKey(for serviceType: AIServiceType) -> Bool {
+        if serviceType == .codex {
+            return CodexAuthManager.shared.currentStatus.isAuthenticated
+        }
         if serviceType == .ollama { return true }
         return getAPIKey(for: serviceType) != nil
     }
@@ -393,6 +400,7 @@ class KeychainManager {
         func apiKey(for serviceType: AIServiceType) -> String? {
             switch serviceType {
             case .openai: return openaiKey
+            case .codex: return nil
             case .claude: return claudeKey
             case .gemini: return geminiKey
             case .deepseek: return deepseekKey

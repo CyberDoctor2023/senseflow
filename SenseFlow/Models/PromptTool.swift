@@ -11,6 +11,7 @@ import Carbon
 /// AI 服务类型
 enum AIServiceType: String, Codable, CaseIterable {
     case openai = "openai"
+    case codex = "codex"
     case claude = "claude"
     case gemini = "gemini"
     case deepseek = "deepseek"
@@ -20,6 +21,7 @@ enum AIServiceType: String, Codable, CaseIterable {
     var displayName: String {
         switch self {
         case .openai: return "OpenAI"
+        case .codex: return "Codex (ChatGPT 登录)"
         case .claude: return "Claude (via OpenRouter)"
         case .gemini: return "Gemini"
         case .deepseek: return "DeepSeek"
@@ -33,6 +35,8 @@ enum AIServiceType: String, Codable, CaseIterable {
         switch self {
         case .openai:
             return ("api.openai.com", "https", 443)
+        case .codex:
+            return ("chatgpt.com", "https", 443)
         case .claude:
             // Claude 通过 OpenRouter 转发（MacPaw SDK 不支持 Claude 原生格式）
             return ("openrouter.ai", "https", 443)
@@ -50,6 +54,7 @@ enum AIServiceType: String, Codable, CaseIterable {
     var defaultModel: String {
         switch self {
         case .openai: return "gpt-4o-mini"
+        case .codex: return "gpt-5.4-mini"
         case .claude: return "anthropic/claude-3.5-sonnet"
         case .gemini: return "gemini-2.5-flash"
         case .deepseek: return "deepseek-chat"
@@ -85,7 +90,7 @@ enum AIServiceType: String, Codable, CaseIterable {
 
     var requiresAPIKey: Bool {
         switch self {
-        case .ollama: return false
+        case .codex, .ollama: return false
         default: return true
         }
     }
@@ -93,7 +98,7 @@ enum AIServiceType: String, Codable, CaseIterable {
     /// 是否需要 relaxed parsing（非 OpenAI 服务）
     var needsRelaxedParsing: Bool {
         switch self {
-        case .openai, .ollama: return false
+        case .openai, .codex, .ollama: return false
         default: return true
         }
     }
@@ -102,7 +107,7 @@ enum AIServiceType: String, Codable, CaseIterable {
     var supportsVision: Bool {
         switch self {
         case .openai, .gemini: return true
-        case .claude, .deepseek, .ollama: return false
+        case .codex, .claude, .deepseek, .ollama: return false
         case .openrouter: return true // 取决于底层模型
         }
     }

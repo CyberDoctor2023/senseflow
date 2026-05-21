@@ -43,6 +43,8 @@ struct PromptToolsSettingsView: View {
     @State private var originalModelName = ""
     @State private var isTestingConnection = false
     @State private var connectionTestResult: String?
+    @State private var codexAuthStatus: CodexAuthStatus = .loggedOut()
+    @State private var codexLoginMessage: String?
 
     // 缓存所有 API Keys（避免切换服务时重复读取 Keychain）
     @State private var cachedAPIKeys: [AIServiceType: String] = [:]
@@ -62,6 +64,67 @@ struct PromptToolsSettingsView: View {
         dependencies.userAPISettingsService
     }
 
+    private var codexAuthSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack {
+                Image(systemName: codexAuthStatus.isAuthenticated ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    .foregroundStyle(codexAuthStatus.isAuthenticated ? .green : .red)
+
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    Text(Strings.PromptToolsSettings.codexAuthTitle)
+                    Text(codexAuthStatus.message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+            }
+
+            codexMetadataView
+
+            HStack {
+                Button {
+                    startCodexLogin()
+                } label: {
+                    Label(Strings.PromptToolsSettings.codexLoginButton, systemImage: "person.crop.circle.badge.plus")
+                }
+                .compatibleButtonStyle(prominent: !codexAuthStatus.isAuthenticated)
+
+                Button {
+                    refreshCodexAuthStatus()
+                } label: {
+                    Label(Strings.PromptToolsSettings.codexRefreshButton, systemImage: "arrow.clockwise")
+                }
+                .compatibleButtonStyle()
+
+                if let codexLoginMessage {
+                    Text(codexLoginMessage)
+                        .font(.caption)
+                        .foregroundStyle(codexLoginMessage.contains("失败") ? .red : .secondary)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var codexMetadataView: some View {
+        if codexAuthStatus.accountID != nil || codexAuthStatus.planType != nil || codexAuthStatus.expiresAt != nil {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                if let accountID = codexAuthStatus.accountID {
+                    Text("\(Strings.PromptToolsSettings.codexAccountPrefix): \(redactedAccountID(accountID))")
+                }
+                if let planType = codexAuthStatus.planType {
+                    Text("\(Strings.PromptToolsSettings.codexPlanPrefix): \(planType)")
+                }
+                if let expiresAt = codexAuthStatus.expiresAt {
+                    Text("\(Strings.PromptToolsSettings.codexExpiryPrefix): \(formattedDate(expiresAt))")
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+    }
+
     var body: some View {
         Form {
                 // AI 服务配置
@@ -76,6 +139,9 @@ struct PromptToolsSettingsView: View {
                         // 从缓存中加载对应服务的 API Key（不触发 Keychain 读取）
                         loadServiceConfigFromCache()
                         apiSettingsService.updateCurrentServiceType(newValue)
+                        if newValue == .codex {
+                            refreshCodexAuthStatus()
+                        }
                     }
 
                     if selectedService.requiresAPIKey {
@@ -85,6 +151,10 @@ struct PromptToolsSettingsView: View {
                             .onSubmit {
                                 saveAllKeys()
                             }
+                    }
+
+                    if selectedService == .codex {
+                        codexAuthSection
                     }
 
                     TextField(Strings.PromptToolsSettings.modelPlaceholder, text: $modelName)
@@ -198,6 +268,7 @@ struct PromptToolsSettingsView: View {
             // 加载 API Keys（首次触发 Keychain 授权，后续使用缓存）
             // 这是合理的：用户打开 Settings 就是为了查看/配置密钥
             loadAllSettings()
+            refreshCodexAuthStatus()
         }
         .sheet(item: $editorMode) { mode in
             PromptToolEditorView(
@@ -299,6 +370,32 @@ struct PromptToolsSettingsView: View {
                 saveSuccess = false
             }
         }
+    }
+
+    private func refreshCodexAuthStatus() {
+        codexAuthStatus = apiSettingsService.codexAuthStatus
+    }
+
+    private func startCodexLogin() {
+        do {
+            try apiSettingsService.startCodexBrowserLogin()
+            codexLoginMessage = Strings.PromptToolsSettings.codexLoginStarted
+        } catch {
+            codexLoginMessage = "\(Strings.PromptToolsSettings.codexLoginFailedPrefix): \(error.localizedDescription)"
+        }
+        refreshCodexAuthStatus()
+    }
+
+    private func redactedAccountID(_ accountID: String) -> String {
+        guard accountID.count > 8 else { return "••••" }
+        return "\(accountID.prefix(4))…\(accountID.suffix(4))"
+    }
+
+    private func formattedDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
     }
 
     private func testConnection() {
