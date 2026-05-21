@@ -123,10 +123,20 @@
 - **来源**: Context7 `/websites/developers_openai_codex`、本机 `codex login --help`
 - **要点**:
   - Codex 支持 API key、ChatGPT 托管登录、外部 ChatGPT tokens 三类认证模式
-  - 浏览器式登录由 `codex login` 管理，本机 `codex login status` 可报告登录状态
-  - 本机 Codex ChatGPT auth 存在 `~/.codex/auth.json`，集成时必须避免展示 token
-  - Codex ChatGPT 后端使用 `https://chatgpt.com/backend-api/codex` 及 Responses 风格接口
-  - ChatGPT auth 请求需携带 bearer token，存在 account id 时携带 `ChatGPT-Account-Id`
+  - Codex app-server 的浏览器登录通过 `account/login/start` 返回 `authUrl`，回调默认使用本机 `localhost:1455`
+  - SSH/远程登录文档也确认 Codex 默认本机 callback port 是 1455
+  - Lifenotes 参考实现使用 `auth.openai.com/oauth/authorize` + PKCE + `ASWebAuthenticationSession`
+  - SenseFlow 应使用应用自有 OAuth/Keychain 登录态，不应把本机 CLI `~/.codex/auth.json` 当成 App 登录态
+  - Codex ChatGPT 后端使用 `https://chatgpt.com/backend-api/codex/responses`
+
+### 2026-05-21: Codex Responses 请求形状修正
+- **来源**: Lifenotes `CodexVoiceIntentResolver.swift`、Context7 `/websites/developers_openai_codex`
+- **要点**:
+  - ChatGPT Codex 后端要求 `input` 为消息数组，而不是裸字符串
+  - 文本消息形状：`role: user` + `content: [{ type: input_text, text: ... }]`
+  - 请求头包含 bearer token、`chatgpt-account-id`、`OpenAI-Beta: responses=experimental`
+  - Lifenotes 使用 `stream: true` 并解析 SSE `response.output_text.delta` / completed_text
+  - 非结构化测试连接可继续解析 JSON `output_text`，但请求 body 必须保持数组形状
 
 ### 2026-05-21: MacPaw OpenAI Swift SDK 配置能力
 - **来源**: Context7 `/macpaw/openai`

@@ -225,8 +225,11 @@ protocol UserAPISettingsServiceProtocol {
     /// 当前 Codex 浏览器登录状态（不包含 token）
     var codexAuthStatus: CodexAuthStatus { get }
 
-    /// 启动官方 Codex 浏览器登录流程
-    func startCodexBrowserLogin() throws
+    /// 启动 Codex 浏览器登录流程，并将凭证保存到 SenseFlow Keychain
+    func startCodexBrowserLogin() async throws
+
+    /// 删除 SenseFlow 保存的 Codex 登录凭证
+    func signOutCodex() throws
 
     /// 测试当前 AI 服务连接
     func testConnection() async throws -> Bool

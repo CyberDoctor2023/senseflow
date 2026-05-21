@@ -337,7 +337,7 @@ class KeychainManager {
     /// 检查是否已配置 API Key
     func hasAPIKey(for serviceType: AIServiceType) -> Bool {
         if serviceType == .codex {
-            return CodexAuthManager.shared.currentStatus.isAuthenticated
+            return CodexAuthManager.shared.hasCachedCredentials
         }
         if serviceType == .ollama { return true }
         return getAPIKey(for: serviceType) != nil

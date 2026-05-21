@@ -278,8 +278,12 @@ final class UserAPISettingsServiceAdapter: UserAPISettingsServiceProtocol {
         CodexAuthManager.shared.currentStatus
     }
 
-    func startCodexBrowserLogin() throws {
-        try CodexAuthManager.shared.startBrowserLogin()
+    func startCodexBrowserLogin() async throws {
+        _ = try await CodexAuthManager.shared.startBrowserLogin()
+    }
+
+    func signOutCodex() throws {
+        try CodexAuthManager.shared.signOut()
     }
 
     func testConnection() async throws -> Bool {

@@ -45,6 +45,7 @@ struct PromptToolsSettingsView: View {
     @State private var connectionTestResult: String?
     @State private var codexAuthStatus: CodexAuthStatus = .loggedOut()
     @State private var codexLoginMessage: String?
+    @State private var isCodexAuthInProgress = false
 
     // 缓存所有 API Keys（避免切换服务时重复读取 Keychain）
     @State private var cachedAPIKeys: [AIServiceType: String] = [:]
@@ -89,6 +90,7 @@ struct PromptToolsSettingsView: View {
                     Label(Strings.PromptToolsSettings.codexLoginButton, systemImage: "person.crop.circle.badge.plus")
                 }
                 .compatibleButtonStyle(prominent: !codexAuthStatus.isAuthenticated)
+                .disabled(isCodexAuthInProgress)
 
                 Button {
                     refreshCodexAuthStatus()
@@ -96,6 +98,22 @@ struct PromptToolsSettingsView: View {
                     Label(Strings.PromptToolsSettings.codexRefreshButton, systemImage: "arrow.clockwise")
                 }
                 .compatibleButtonStyle()
+                .disabled(isCodexAuthInProgress)
+
+                if codexAuthStatus.accountID != nil {
+                    Button {
+                        signOutCodex()
+                    } label: {
+                        Label(Strings.PromptToolsSettings.codexSignOutButton, systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+                    .compatibleButtonStyle()
+                    .disabled(isCodexAuthInProgress)
+                }
+
+                if isCodexAuthInProgress {
+                    ProgressView()
+                        .scaleEffect(Constants.scaleTiny)
+                }
 
                 if let codexLoginMessage {
                     Text(codexLoginMessage)
@@ -377,11 +395,33 @@ struct PromptToolsSettingsView: View {
     }
 
     private func startCodexLogin() {
+        isCodexAuthInProgress = true
+        codexLoginMessage = Strings.PromptToolsSettings.codexLoginOpening
+
+        Task {
+            do {
+                try await apiSettingsService.startCodexBrowserLogin()
+                await MainActor.run {
+                    codexLoginMessage = Strings.PromptToolsSettings.codexLoginStarted
+                    refreshCodexAuthStatus()
+                    isCodexAuthInProgress = false
+                }
+            } catch {
+                await MainActor.run {
+                    codexLoginMessage = "\(Strings.PromptToolsSettings.codexLoginFailedPrefix): \(error.localizedDescription)"
+                    refreshCodexAuthStatus()
+                    isCodexAuthInProgress = false
+                }
+            }
+        }
+    }
+
+    private func signOutCodex() {
         do {
-            try apiSettingsService.startCodexBrowserLogin()
-            codexLoginMessage = Strings.PromptToolsSettings.codexLoginStarted
+            try apiSettingsService.signOutCodex()
+            codexLoginMessage = Strings.PromptToolsSettings.codexSignedOut
         } catch {
-            codexLoginMessage = "\(Strings.PromptToolsSettings.codexLoginFailedPrefix): \(error.localizedDescription)"
+            codexLoginMessage = "\(Strings.PromptToolsSettings.codexSignOutFailedPrefix): \(error.localizedDescription)"
         }
         refreshCodexAuthStatus()
     }
