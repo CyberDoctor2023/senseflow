@@ -1,0 +1,64 @@
+# Claude Code Ignore File
+# 类似 .gitignore，告诉 Claude 哪些文件/目录不需要关注
+
+# macOS 系统文件
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode 构建产物
+build/
+DerivedData/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+xcuserdata/
+*.xccheckout
+*.moved-aside
+*.xcuserstate
+*.xcscmblueprint
+
+# Swift Package Manager
+.swiftpm/
+.build/
+Packages/
+Package.resolved
+
+# CocoaPods
+Pods/
+*.xcworkspace
+!default.xcworkspace
+
+# Carthage
+Carthage/Build/
+
+# 临时文件
+*.swp
+*.swo
+*~
+.*.sw[a-z]
+
+# 日志文件
+*.log
+
+# 数据库文件（开发时生成）
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# 大文件存储目录（运行时生成）
+blobs/
+
+# IDE 配置
+.vscode/
+.idea/
+
+# 测试覆盖率
+*.gcda
+*.gcno
+*.profdata
+*.profraw
+
+# 文档生成
+docs/generated/

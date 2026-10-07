@@ -1,0 +1,54 @@
+feat(arch): implement Clean Architecture
+
+Refactor from singleton Manager pattern to Clean Architecture with
+SOLID principles, dependency injection, and protocol-oriented design.
+
+## Architecture Layers
+
+- **Domain**: Protocols + Value Objects (9 files)
+  - Protocols: ClipboardRepository, PromptToolRepository, HotKeyRegistry,
+    ClipboardReader/Writer, AIServiceProtocol, NotificationServiceProtocol
+  - Value Objects: ToolID, KeyCombo, ClipboardContent
+
+- **UseCases**: Business logic (3 files)
+  - ExecutePromptTool, AnalyzeAndRecommend, RegisterToolHotKey
+
+- **Adapters**: Protocol implementations (6 files)
+  - SQLitePromptToolRepository, OpenAIServiceAdapter, NSPasteboardAdapter,
+    UserNotificationAdapter, CarbonHotKeyAdapter, SystemContextCollector
+
+- **Infrastructure**: DI Container (1 file)
+  - DependencyContainer
+
+- **Coordinators**: Orchestration (2 files)
+  - PromptToolCoordinator, SmartToolCoordinator
+
+## Key Improvements
+
+- ✅ Dependency Inversion: Depend on abstractions, not concrete classes
+- ✅ Single Responsibility: Each class has one reason to change
+- ✅ Testability: All dependencies can be mocked
+- ✅ Type Safety: Value objects wrap primitive types (ToolID vs UUID)
+- ✅ Loose Coupling: Protocol-oriented design throughout
+
+## Technical Details
+
+- Total files added: 22
+- Lines of code: ~1500
+- Build status: ✅ BUILD SUCCEEDED
+- Backward compatible: Existing code continues to work
+
+## Migration Strategy
+
+- Phase 1: New architecture coexists with old Managers
+- Phase 2: Gradually migrate existing code to use Coordinators
+- Phase 3: Remove old Manager classes
+
+## Documentation
+
+- docs/REFACTORING_PLAN.md - Original refactoring plan
+- docs/CLEAN_ARCHITECTURE_MIGRATION.md - Migration guide
+- docs/ARCHITECTURE_QUICK_START.md - Quick start guide
+- ARCHITECTURE_INTEGRATION_SUCCESS.md - Success report
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>

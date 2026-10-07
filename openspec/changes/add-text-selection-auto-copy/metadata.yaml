@@ -1,0 +1,112 @@
+change_id: add-text-selection-auto-copy
+version: 0.5.0
+title: Add Text Selection Auto-Copy with Unified Filtering
+status: draft
+created: 2026-02-06
+owner: "@聂宇杰"
+
+summary: |
+  实现划词即复制功能和统一的过滤管理器。用户选中文本后自动复制到剪贴板历史，
+  同时创建 ClipboardFilterManager 统一管理所有过滤规则（敏感数据、密码管理器、应用黑名单）。
+
+motivation: |
+  当前 SenseFlow 只能捕获用户主动复制（Cmd+C）的内容，增加了操作步骤。
+  同时，现有的应用过滤功能虽然在设置界面中存在，但实际上并未实现。
+  通过实现划词即复制和统一过滤管理器，提升用户体验和代码可维护性。
+
+capabilities:
+  new:
+    - clipboard-filtering
+    - text-selection-monitoring
+  enhanced:
+    - settings-text-selection
+
+files:
+  new:
+    - SenseFlow/Managers/ClipboardFilterManager.swift
+    - SenseFlow/Services/TextSelectionMonitor.swift
+  modified:
+    - SenseFlow/Services/ClipboardMonitor.swift
+    - SenseFlow/Views/Settings/AdvancedSettingsView.swift
+    - SenseFlow/Constants/UserDefaultsKeys.swift
+    - SenseFlow/Constants/Strings.swift
+    - SenseFlow/AppDelegate.swift
+
+dependencies:
+  internal:
+    - ClipboardMonitor
+    - UserDefaults
+    - DatabaseManager
+  external:
+    - NSEvent
+    - NSWorkspace
+    - Accessibility Framework
+    - NSPasteboard
+
+risks:
+  - id: accessibility-compatibility
+    description: 某些应用不支持 Accessibility API 读取选中文本
+    severity: medium
+    mitigation: 静默失败，不影响用户体验；提供应用黑名单让用户自行排除
+
+  - id: performance-impact
+    description: 全局鼠标事件监听可能影响性能
+    severity: low
+    mitigation: 使用 100ms 防抖避免频繁触发；性能测试验证 CPU 占用 < 0.1%
+
+  - id: circular-capture
+    description: 划词复制写入剪贴板后被 ClipboardMonitor 再次捕获
+    severity: low
+    mitigation: 复用 ClipboardMonitor 的 pauseMonitoring() 机制
+
+  - id: user-experience
+    description: 用户可能不喜欢自动复制行为
+    severity: medium
+    mitigation: 默认开启但可在设置中关闭；提供最小文本长度设置避免误触发
+
+timeline:
+  phase_1: 4 hours  # 创建 ClipboardFilterManager
+  phase_2: 2 hours  # 修改 ClipboardMonitor
+  phase_3: 4 hours  # 创建 TextSelectionMonitor
+  phase_4: 2 hours  # 添加设置界面
+  phase_5: 1 hour   # 集成和启动
+  phase_6: 2 hours  # 测试和验证
+  total: 15 hours
+
+success_criteria:
+  functional:
+    - 用户选中文本后自动复制到剪贴板历史
+    - 用户可以在高级设置中开关此功能
+    - 应用黑名单过滤真正生效
+    - 敏感数据过滤继续正常工作
+    - 两个监听器共享相同的过滤逻辑
+
+  performance:
+    - CPU 占用保持 < 0.1%
+    - 文本选择响应延迟 < 200ms
+    - 不影响现有剪贴板监听性能
+
+  quality:
+    - 代码符合单一职责原则
+    - 过滤逻辑集中管理，易于维护
+    - 公开接口清晰，易于测试
+
+non_goals:
+  - 强制取词功能（模拟 Cmd+C 或菜单栏操作）- 留待 v2.0
+  - 应用白名单智能学习 - 留待 v2.0
+  - 浮动图标显示（类似 PopClip）- 不在产品规划中
+  - 修改引导页说明 - 本次只实现功能，引导页更新留待后续
+
+references:
+  - title: Easydict 项目调研
+    url: file:///Users/jack/Documents/AI_clipboard/docs/refs.md
+    date: 2026-02-06
+
+  - title: Apple Accessibility API 文档
+    url: https://developer.apple.com/documentation/accessibility
+
+  - title: SelectedTextKit 库
+    url: https://github.com/tisfeng/SelectedTextKit
+
+  - title: KeySender 库
+    url: https://github.com/jordanbaird/KeySender
