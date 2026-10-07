@@ -26,4 +26,3 @@ actor ClipboardTutorialRepository: ClipboardRepositoryProtocol, HistoryContentRe
     func checkpoint(_ draft: DocumentDraft) async throws { drafts[draft.sessionID] = draft }
     func discard(sessionID: UUID, generation: Int) async throws { drafts[sessionID] = nil }
 }
-

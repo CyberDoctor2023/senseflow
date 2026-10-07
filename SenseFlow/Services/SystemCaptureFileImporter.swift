@@ -130,4 +130,3 @@ actor SystemCaptureFileImporter {
         return Signature(size: values.fileSize ?? 0, modified: values.contentModificationDate)
     }
 }
-
