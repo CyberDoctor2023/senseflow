@@ -5,11 +5,18 @@ enum ClipboardContentFilter: String, CaseIterable { case text, image, code, scre
 
 /// Owns refresh/search generations. Older results can never replace a newer query.
 @MainActor final class ClipboardListViewModel: ObservableObject {
-    @Published private var loadedItems: [ClipboardItem] = []
-    @Published private(set) var selectedType: ClipboardContentFilter?
-    var items: [ClipboardItem] {
-        guard let selectedType else { return loadedItems }
-        return loadedItems.filter { Self.matches($0, filter: selectedType) }
+    private var loadedItems: [ClipboardItem] = [] {
+        didSet { rebuildVisibleItems() }
+    }
+    @Published private(set) var selectedType: ClipboardContentFilter? {
+        didSet { rebuildVisibleItems() }
+    }
+    @Published private(set) var items: [ClipboardItem] = []
+
+    /// Derives presentation once per page/filter update, never during card body evaluation.
+    private func rebuildVisibleItems() {
+        if let selectedType { items = loadedItems.filter { Self.matches($0, filter: selectedType) } }
+        else { items = loadedItems }
     }
     private static func matches(_ item: ClipboardItem, filter: ClipboardContentFilter) -> Bool {
         switch filter {

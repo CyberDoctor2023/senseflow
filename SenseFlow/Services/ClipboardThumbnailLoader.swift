@@ -1,5 +1,4 @@
 import Foundation
-import ImageIO
 import CoreGraphics
 import AVFoundation
 
@@ -24,17 +23,7 @@ actor ClipboardThumbnailLoader {
                 generator.maximumSize = CGSize(width: pixels, height: pixels)
                 return try? await generator.image(at: .zero).image
             }
-            let data: Data?
-            if let stored = detail.imageData { data = stored }
-            else if let path = detail.blobPath { data = try? Data(contentsOf: URL(fileURLWithPath: path)) }
-            else { data = nil }
-            guard let data, let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
-            return CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: pixels,
-                kCGImageSourceShouldCacheImmediately: true
-            ] as CFDictionary)
+            return try? await HistoryMediaLoader.imagePreview(for: detail, pixels: pixels)
         }
         pending[key] = request
         let image = await request.value

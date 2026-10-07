@@ -1,7 +1,6 @@
 import Foundation
 import Observation
 import AppKit
-import ImageIO
 
 /// Owns one document identity. The native editor owns the live text, not this model.
 @MainActor @Observable final class DocumentPreviewCoordinator {
@@ -186,15 +185,7 @@ import ImageIO
                 let detail = try await self.repository.loadDetail(itemID: item.id, revision: item.uniqueId)
                 let image: CGImage?
                 if detail.type == .image {
-                    image = try await Task.detached(priority: .userInitiated) {
-                        let data: Data
-                        if let stored = detail.imageData { data = stored }
-                        else if let path = detail.blobPath { data = try Data(contentsOf: URL(fileURLWithPath: path)) }
-                        else { throw DocumentStoreError.missing }
-                        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-                              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 2048, kCGImageSourceShouldCacheImmediately: true] as CFDictionary) else { throw DocumentStoreError.missing }
-                        return image
-                    }.value
+                    image = try await HistoryMediaLoader.imagePreview(for: detail, pixels: 2048)
                 } else { image = nil }
                 guard !Task.isCancelled, self.requestID == token else { return }
                 if self.isEditing && self.isDirty {
@@ -373,10 +364,7 @@ import ImageIO
             Task {
                 do {
                     let detail = try await repository.loadDetail(itemID: source.itemID, revision: source.revision)
-                    let data: Data
-                    if let stored = detail.imageData { data = stored }
-                    else if let path = detail.blobPath { data = try await Task.detached { try Data(contentsOf: URL(fileURLWithPath: path)) }.value }
-                    else { throw DocumentStoreError.missing }
+                    let data = try await HistoryMediaLoader.imageData(for: detail)
                     await writer.write(.image(data))
                 } catch { errorMessage = error.localizedDescription }
             }

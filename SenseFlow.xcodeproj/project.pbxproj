@@ -166,6 +166,9 @@
 		CA0100010000000000000001 /* ClipboardOnboardingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0100010000000000000002 /* ClipboardOnboardingCoordinator.swift */; };
 		CA0100020000000000000001 /* ContextualOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0100020000000000000002 /* ContextualOnboardingView.swift */; };
 		E8F100080000000000000001 /* SystemCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F100080000000000000002 /* SystemCaptureService.swift */; };
+		E8F108080000000000000001 /* SystemCaptureFileImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F108080000000000000011 /* SystemCaptureFileImporter.swift */; };
+		E8F108080000000000000002 /* ClipboardTutorialRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F108080000000000000012 /* ClipboardTutorialRepository.swift */; };
+		E8F108080000000000000003 /* HistoryMediaLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F108080000000000000013 /* HistoryMediaLoader.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -345,6 +348,9 @@
 		CA0100010000000000000002 /* ClipboardOnboardingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SenseFlow/Coordinators/ClipboardOnboardingCoordinator.swift; sourceTree = "<group>"; };
 		CA0100020000000000000002 /* ContextualOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SenseFlow/Views/ContextualOnboardingView.swift; sourceTree = "<group>"; };
 		E8F100080000000000000002 /* SystemCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SystemCaptureService.swift; path = SenseFlow/Services/SystemCaptureService.swift; sourceTree = "<group>"; };
+		E8F108080000000000000011 /* SystemCaptureFileImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SystemCaptureFileImporter.swift; path = SenseFlow/Services/SystemCaptureFileImporter.swift; sourceTree = "<group>"; };
+		E8F108080000000000000012 /* ClipboardTutorialRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ClipboardTutorialRepository.swift; path = SenseFlow/Services/ClipboardTutorialRepository.swift; sourceTree = "<group>"; };
+		E8F108080000000000000013 /* HistoryMediaLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HistoryMediaLoader.swift; path = SenseFlow/Services/HistoryMediaLoader.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -630,6 +636,9 @@
 				5768B67981168B778BA15428 /* NativeDocumentEditor.swift */,
 				83ACDDA2E8180B2B5FA9DACD /* DocumentEditingContracts.swift */,
 				2BFAE29AD4C0B0679658EC2C /* ClipboardThumbnailLoader.swift */,
+				E8F108080000000000000011 /* SystemCaptureFileImporter.swift */,
+				E8F108080000000000000012 /* ClipboardTutorialRepository.swift */,
+				E8F108080000000000000013 /* HistoryMediaLoader.swift */,
 				E8F100080000000000000002 /* SystemCaptureService.swift */,
 				D8FCDE7781575616381F8E5D /* SessionDiagnostics.swift */,
 			);
@@ -1199,6 +1208,9 @@
 				B8622CFB34E423D3A4ED172C /* NativeDocumentEditor.swift in Sources */,
 				F9D0E8A779751450C96BA38A /* DocumentEditingContracts.swift in Sources */,
 				921FFFCA31362738496CD8EF /* ClipboardThumbnailLoader.swift in Sources */,
+				E8F108080000000000000001 /* SystemCaptureFileImporter.swift in Sources */,
+				E8F108080000000000000002 /* ClipboardTutorialRepository.swift in Sources */,
+				E8F108080000000000000003 /* HistoryMediaLoader.swift in Sources */,
 				E8F100080000000000000001 /* SystemCaptureService.swift in Sources */,
 				112569CD5F746C1862B454B9 /* SessionDiagnostics.swift in Sources */,
 			);

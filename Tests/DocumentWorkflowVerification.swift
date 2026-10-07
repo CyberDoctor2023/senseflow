@@ -414,7 +414,7 @@ import CryptoKit
         let wheelDistance = wheelScroll.contentView.bounds.origin.x - wheelBefore
         print("MEASURE native ordinary wheel movement: \(wheelDistance)pt")
         try require(wheelDistance > 20, "history panel event dispatch converts vertical wheel input into useful horizontal displacement")
-        guard let preciseCG = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: -17, wheel2: 0, wheel3: 0) else {
+        guard let preciseCG = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: 0, wheel2: -17, wheel3: 0) else {
             throw Failure("precise history wheel setup missing")
         }
         preciseCG.location = wheelCG.location
@@ -424,11 +424,11 @@ import CryptoKit
         try await Task.sleep(nanoseconds: 150_000_000)
         let preciseDistance = wheelScroll.contentView.bounds.origin.x - preciseBefore
         print("MEASURE precise native wheel movement: \(preciseDistance)pt")
-        try require(abs(preciseDistance - 17) < 1, "precise vertical wheel moves history by pixel distance without line multiplication")
+        try require(abs(preciseDistance - 17) < 1, "precise horizontal wheel moves history by pixel distance without line multiplication")
         // Exercise the same window route through the actual trailing boundary, including release.
         var greatestStretch: CGFloat = 0
         for _ in 0..<80 {
-            guard let endCG = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1,
+            guard let endCG = CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 1,
                                       wheel1: -1600, wheel2: 0, wheel3: 0) else { throw Failure("edge wheel missing") }
             endCG.location = wheelCG.location
             guard let endEvent = NSEvent(cgEvent: endCG) else { throw Failure("edge event missing") }

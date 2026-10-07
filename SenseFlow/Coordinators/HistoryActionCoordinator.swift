@@ -1,7 +1,6 @@
 import Foundation
 import Observation
 import AppKit
-import ImageIO
 
 /// Explicit preview and paste intents share detail loading, never clipboard side effects.
 @MainActor @Observable final class HistoryActionCoordinator {
@@ -57,11 +56,7 @@ import ImageIO
                     guard let text = detail.textContent else { throw DocumentStoreError.missing }
                     await writer.write(text)
                 case .image:
-                    let data: Data
-                    if let stored = detail.imageData { data = stored }
-                    else if let path = detail.blobPath {
-                        data = try await Task.detached(priority: .userInitiated) { try Data(contentsOf: URL(fileURLWithPath: path)) }.value
-                    } else { throw DocumentStoreError.missing }
+                    let data = try await HistoryMediaLoader.imageData(for: detail)
                     guard !Task.isCancelled, token == pasteRequest else { return }
                     await writer.write(.image(data))
                 case .video:
@@ -87,20 +82,7 @@ import ImageIO
                 guard let text = detail.textContent else { throw DocumentStoreError.missing }
                 pasteboardItem.setString(text, forType: .string)
             case .image:
-                let png = try await Task.detached(priority: .userInitiated) {
-                    let data: Data
-                    if let stored = detail.imageData { data = stored }
-                    else if let path = detail.blobPath { data = try Data(contentsOf: URL(fileURLWithPath: path)) }
-                    else { throw DocumentStoreError.missing }
-                    guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { throw DocumentStoreError.missing }
-                    if CGImageSourceGetType(source) as String? == "public.png" { return data }
-                    guard let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { throw DocumentStoreError.missing }
-                    let output = NSMutableData()
-                    guard let destination = CGImageDestinationCreateWithData(output, "public.png" as CFString, 1, nil) else { throw DocumentStoreError.unavailable }
-                    CGImageDestinationAddImage(destination, image, nil)
-                    guard CGImageDestinationFinalize(destination) else { throw DocumentStoreError.unavailable }
-                    return output as Data
-                }.value
+                let png = try await HistoryMediaLoader.pngForDrag(for: detail)
                 try Task.checkCancellation()
                 pasteboardItem.setData(png, forType: .png)
             case .video:
