@@ -177,7 +177,7 @@ final class DependencyContainer {
     // 【六边形架构（Hexagonal Architecture）】
     // 核心思想：业务逻辑在中心，外部世界通过"端口和适配器"连接
     // - Port（端口）：接口定义（ClipboardReader、AIServiceProtocol）
-    // - Adapter（适配器）：接口实现（NSPasteboardAdapter、OpenAIServiceAdapter）
+    // - Adapter（适配器）：接口实现（NSPasteboardAdapter、UserNotificationAdapter）
     //
     // 依赖流向：
     // Use Case → Port（接口）← Adapter → 外部框架
@@ -200,11 +200,7 @@ final class DependencyContainer {
         UserNotificationAdapter(notificationService: existingNotificationService)
     }()
 
-    lazy var aiService: AIServiceProtocol = {
-        // 将现有的 AIService.shared 适配到接口
-        // 这样 Use Case 不依赖具体的 AI 服务实现
-        OpenAIServiceAdapter(aiService: SenseFlow.AIService.shared)
-    }()
+    lazy var aiService: AIServiceProtocol = SenseFlow.AIService.shared
 
     /// 用户可见 AI API 配置服务（不包含 Langfuse）
     /// 用于 Settings 等 UI 层，统一管理服务切换、API Key、连接测试

@@ -11,7 +11,7 @@ import GoogleGenerativeAI
 import OpenTelemetryApi
 
 /// Gemini 服务（使用 Google 官方 SDK）
-class GeminiService {
+actor GeminiService {
     private let deterministicTemperature: Float = 0
 
     // MARK: - Singleton
@@ -20,13 +20,14 @@ class GeminiService {
 
     // MARK: - Private Properties
 
-    private var model: GenerativeModel?
-    private let apiRequestRecorder: APIRequestRecorder
+    private let recordRequest: @Sendable (APIRequestRecord) async -> Void
 
     // MARK: - Initialization
 
-    private init(apiRequestRecorder: APIRequestRecorder = InMemoryAPIRequestRecorder.shared) {
-        self.apiRequestRecorder = apiRequestRecorder
+    private init(recordRequest: @escaping @Sendable (APIRequestRecord) async -> Void = { record in
+        await InMemoryAPIRequestRecorder.shared.record(record)
+    }) {
+        self.recordRequest = recordRequest
     }
 
     // MARK: - Public Methods
@@ -486,7 +487,7 @@ class GeminiService {
             error: error?.localizedDescription
         )
 
-        await apiRequestRecorder.record(record)
+        await recordRequest(record)
     }
 
     /// 序列化为可读 JSON

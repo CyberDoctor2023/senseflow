@@ -107,16 +107,6 @@ struct ClipboardCardView: View {
 
 /// Converts real card bounds to screen coordinates without geometry work in the body.
 struct CardPointerRegion: NSViewRepresentable {
-    /// Identifies real card surfaces so background dismissal cannot consume a preview-switch press.
-    static func containsCard(in window: NSWindow, at point: NSPoint) -> Bool {
-        func contains(_ view: NSView) -> Bool {
-            if let card = view as? PointerView,
-               !card.isHiddenOrHasHiddenAncestor,
-               card.visibleRect.contains(card.convert(point, from: nil)) { return true }
-            return view.subviews.contains(where: contains)
-        }
-        return window.contentView.map(contains) ?? false
-    }
     let isPreviewSource: Bool
     var isEnabled: Bool = true
     let loadDragItem: () async throws -> NSPasteboardItem
@@ -140,7 +130,7 @@ struct CardPointerRegion: NSViewRepresentable {
         view.onDragStateChanged = onDragStateChanged
     }
     static func dismantleNSView(_ view: PointerView, coordinator: ()) { view.stopMonitoring() }
-    final class PointerView: NSView, NSDraggingSource {
+    final class PointerView: NSView, NSDraggingSource, HistoryCardSurface {
         var isEnabled = true {
             didSet { if !isEnabled { cancelHold() } }
         }

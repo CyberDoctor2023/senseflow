@@ -182,7 +182,7 @@ struct ClipboardListView: View {
             if loadOnAppear { await viewModel.loadItems() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .clipboardDidUpdate)) { _ in
-            if observesUpdates { Task { await viewModel.loadItems() } }
+            if observesUpdates { viewModel.historyDidChange() }
         }
     }
 

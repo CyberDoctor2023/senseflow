@@ -585,3 +585,12 @@ Apple Doc MCP核对withAnimation(_:completionCriteria:_:completion:)在所有动
 ## 2026-10-08 系统快速预览
 
 [SwiftUI quickLookPreview](https://developer.apple.com/documentation/swiftui/view/quicklookpreview(_:))绑定文件URL，由系统呈现。Apple Doc MCP精确路径返回404且搜索未解析符号，改查Apple官网；实际QLPreviewPanel呈现验证通过。
+
+
+## 2026-10-08 整体重构：事件与并发边界
+
+通过 Apple Doc MCP 当前文档核验：
+- [AppKit 本地事件监听](https://developer.apple.com/documentation/appkit/nsevent/addlocalmonitorforevents(matching:handler:))在事件分发前接收事件，不能依赖多个监听器的安装顺序来区分卡片与背景。窗口层需显式判断卡片命中。
+- [Swift Actor](https://developer.apple.com/documentation/swift/actor)提供 actor 的串行执行边界。生成准备/响应处理属于后台服务，UI记录写入才切换主actor；网络等待期间多个请求各自持有SDK client。
+
+本批未升级SDK、修改外部端点或引入新SQL行为；SQLite文档事务保留原实现与单一数据库队列，实际迁移和草稿验证覆盖这些边界。

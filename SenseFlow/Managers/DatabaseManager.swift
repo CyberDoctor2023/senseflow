@@ -141,7 +141,7 @@ class DatabaseManager {
     }
 
     /// 统一的数据库错误处理
-    private func handleDatabaseError(_ context: String, error: Error) {
+    func handleDatabaseError(_ context: String, error: Error) {
         print("❌ \(context): \(error.localizedDescription)")
         // 可以在这里添加更多错误处理逻辑，如错误上报、用户通知等
     }
@@ -306,20 +306,6 @@ class DatabaseManager {
         }
     }
 
-    /// 插入新条目（便捷方法，保持向后兼容）
-    @available(*, deprecated, message: "Use insertItem(_:ClipboardItemInsertRequest) instead")
-    func insertItem(type: ClipboardItemType, textContent: String? = nil, imageData: Data? = nil, appName: String, appPath: String?) -> Bool {
-        let request = ClipboardItemInsertRequest(
-            type: type,
-            textContent: textContent,
-            imageData: imageData,
-            appName: appName,
-            appPath: appPath
-        )
-        return insertItem(request)
-    }
-
-    /// 验证并生成唯一 ID
     private func validateAndGenerateUniqueId(type: ClipboardItemType, textContent: String?, imageData: Data?) throws -> String {
         let uniqueId = generateUniqueId(type: type, textContent: textContent, imageData: imageData)
         guard !uniqueId.isEmpty else {
@@ -485,55 +471,6 @@ class DatabaseManager {
         }
     }
 
-    /// 搜索剪贴板历史（支持文本内容、应用名称、OCR 文本搜索）
-    /// - Parameters:
-    ///   - query: 搜索关键词
-    ///   - limit: 最大返回数量
-    /// - Returns: 匹配的剪贴板项数组
-    func searchItems(query: String, limit: Int = 200) -> [ClipboardItem] {
-        if !onStoreQueue { return storeQueue.sync { self.searchItems(query: query, limit: limit) } }
-        guard let db = db else { return [] }
-
-        // 空查询返回全部
-        guard !query.isEmpty else {
-            return fetchRecentItems(limit: limit)
-        }
-
-        do {
-            let searchPattern = "%\(query)%"
-            // v0.2: 支持搜索 OCR 文本
-            let searchQuery = historyTable
-                .filter(textContent.like(searchPattern) || appName.like(searchPattern) || ocrText.like(searchPattern))
-                .order(timestamp.desc)
-                .limit(limit)
-
-            var items: [ClipboardItem] = []
-            for row in try db.prepare(searchQuery) {
-                let item = ClipboardItem(
-                    id: row[id],
-                    uniqueId: row[uniqueId],
-                    type: ClipboardItemType(rawValue: row[type]) ?? .text,
-                    textContent: row[textContent],
-                    imageData: row[imageData],
-                    blobPath: row[blobPath],
-                    timestamp: row[timestamp],
-                    appName: row[appName],
-                    appPath: row[appPath],
-                    ocrText: row[ocrText], captureKind: row[captureKind].flatMap(SystemCaptureKind.init(rawValue:)),
-                    origin: HistoryOrigin(rawValue: row[origin]) ?? .clipboard
-                )
-                items.append(item)
-            }
-
-            print("🔍 搜索 '\(query)' 找到 \(items.count) 条记录")
-            return items
-
-        } catch {
-            handleDatabaseError("搜索失败", error: error)
-            return []
-        }
-    }
-
     // MARK: - Async Query Methods
 
     /// 异步查询最近的剪贴板历史（async/await 版本）
@@ -609,8 +546,7 @@ class DatabaseManager {
             try db.run("VACUUM INTO ?", backup.path)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)
         }
-        try db.run("CREATE TABLE IF NOT EXISTS document_drafts (session_id TEXT PRIMARY KEY, source_id INTEGER NOT NULL UNIQUE, base_revision TEXT NOT NULL, generation INTEGER NOT NULL, text TEXT NOT NULL, source_name TEXT NOT NULL, source_path TEXT, source_timestamp INTEGER NOT NULL)")
-        try db.run("CREATE TABLE IF NOT EXISTS document_versions (request_id TEXT PRIMARY KEY, source_id INTEGER, item_id INTEGER NOT NULL)")
+        try SQLiteDocumentStore(db: db).createTables()
     }
 
     /// Lists bounded excerpts without loading image BLOBs or full document strings.
@@ -642,341 +578,33 @@ class DatabaseManager {
                              captureKind: row[captureKind].flatMap(SystemCaptureKind.init(rawValue:)), origin: HistoryOrigin(rawValue: row[origin]) ?? .clipboard)
     }
 
-    /// Idempotent save with stable deduplication and source linkage in one transaction.
+    /// Saves an immutable derived record and its request identity in one transaction.
     func saveDocumentVersion(text: String, source: DocumentSnapshot, requestID: UUID) throws -> Int64 {
         if !onStoreQueue { return try storeQueue.sync { try self.saveDocumentVersion(text: text, source: source, requestID: requestID) } }
         guard let db else { throw DocumentStoreError.unavailable }
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw DocumentStoreError.empty }
-        var result: Int64 = 0
-        try db.transaction {
-            let versions = Table("document_versions")
-            let request = Expression<String>("request_id")
-            let savedID = Expression<Int64>("item_id")
-            if let prior = try db.pluck(versions.filter(request == requestID.uuidString)) {
-                result = prior[savedID]
-                return
-            }
-            let hash = text.sha256()
-            if let existing = try db.pluck(historyTable.filter(uniqueId == hash)) {
-                result = existing[id]
-                try db.run(historyTable.filter(id == result).update(timestamp <- Int64(Date().timeIntervalSince1970)))
-            } else {
-                result = try insertToDatabase(db: db, uniqueId: hash, type: .text, textContent: text,
-                                              imageData: nil, appName: source.appName, appPath: source.appPath)
-            }
-            try db.run(versions.insert(request <- requestID.uuidString,
-                                      Expression<Int64>("source_id") <- source.itemID, savedID <- result))
+        let result = try SQLiteDocumentStore(db: db).saveVersion(text: text, source: source, requestID: requestID) { hash in
+            try self.insertToDatabase(db: db, uniqueId: hash, type: .text, textContent: text,
+                                      imageData: nil, appName: source.appName, appPath: source.appPath)
         }
         DispatchQueue.main.async { NotificationCenter.default.post(name: .clipboardDidUpdate, object: nil) }
         return result
     }
-
-    /// Rejects old checkpoints; committed generation cannot move backwards.
     func checkpointDocumentDraft(_ draft: DocumentDraft) throws {
         if !onStoreQueue { return try storeQueue.sync { try self.checkpointDocumentDraft(draft) } }
         guard let db else { throw DocumentStoreError.unavailable }
-        try db.transaction {
-            let drafts = Table("document_drafts")
-            let sid = Expression<String>("session_id")
-            let generation = Expression<Int>("generation")
-            if let existing = try db.pluck(drafts.filter(sid == draft.sessionID.uuidString)), existing[generation] > draft.generation {
-                throw DocumentStoreError.stale
-            }
-            try db.run("INSERT INTO document_drafts (session_id,source_id,base_revision,generation,text,source_name,source_path,source_timestamp) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(session_id) DO UPDATE SET generation=excluded.generation,text=excluded.text,base_revision=excluded.base_revision",
-                       draft.sessionID.uuidString, draft.source.itemID, draft.source.revision, draft.generation,
-                       draft.text, draft.source.appName, draft.source.appPath, draft.source.timestamp)
-        }
+        try SQLiteDocumentStore(db: db).checkpoint(draft)
     }
-
     func recoverDocumentDraft(sourceID: Int64) throws -> DocumentDraft? {
         if !onStoreQueue { return try storeQueue.sync { try self.recoverDocumentDraft(sourceID: sourceID) } }
         guard let db else { throw DocumentStoreError.unavailable }
-        let drafts = Table("document_drafts")
-        guard let row = try db.pluck(drafts.filter(Expression<Int64>("source_id") == sourceID)),
-              let sessionID = UUID(uuidString: row[Expression<String>("session_id")]) else { return nil }
-        let source = DocumentSnapshot(itemID: sourceID, revision: row[Expression<String>("base_revision")], text: "",
-                                      appName: row[Expression<String>("source_name")], appPath: row[Expression<String?>("source_path")],
-                                      timestamp: row[Expression<Int64>("source_timestamp")])
-        return DocumentDraft(sessionID: sessionID, source: source, generation: row[Expression<Int>("generation")], text: row[Expression<String>("text")])
+        return try SQLiteDocumentStore(db: db).recover(sourceID: sourceID)
     }
-
     func discardDocumentDraft(sessionID: UUID, generation: Int) throws {
         if !onStoreQueue { return try storeQueue.sync { try self.discardDocumentDraft(sessionID: sessionID, generation: generation) } }
         guard let db else { throw DocumentStoreError.unavailable }
-        let drafts = Table("document_drafts")
-        let selection = drafts.filter(Expression<String>("session_id") == sessionID.uuidString)
-        if let row = try db.pluck(selection), row[Expression<Int>("generation")] > generation { throw DocumentStoreError.stale }
-        try db.run(selection.delete())
+        try SQLiteDocumentStore(db: db).discard(sessionID: sessionID, generation: generation)
     }
 
-    // MARK: - Prompt Tools CRUD Operations
-
-    /// 获取所有 Prompt Tools
-    func fetchAllPromptTools() -> [PromptTool] {
-        if !onStoreQueue { return storeQueue.sync { self.fetchAllPromptTools() } }
-        guard let db = db else { return [] }
-
-        do {
-            var tools: [PromptTool] = []
-            for row in try db.prepare(promptToolsTable.order(toolCreatedAt.asc)) {
-                // 使用扩展中的 parsePromptTool 方法来正确解析所有字段
-                let tool = parsePromptToolFromRow(row)
-                tools.append(tool)
-            }
-            return tools
-        } catch {
-            handleDatabaseError("获取 Prompt Tools 失败", error: error)
-            return []
-        }
-    }
-
-    /// 从数据库行解析 PromptTool（包含所有字段）
-    internal func parsePromptToolFromRow(_ row: Row) -> PromptTool {
-        let id = UUID(uuidString: try! row.get(toolId)) ?? UUID()
-        let name = try! row.get(toolName)
-        let prompt = try! row.get(toolPrompt)
-        let shortcutKeyCode = UInt16(try! row.get(toolShortcutKeyCode))
-        let shortcutModifiers = UInt32(try! row.get(toolShortcutModifiers))
-        let isDefault = try! row.get(toolIsDefault)
-        let createdAt = Date(timeIntervalSince1970: try! row.get(toolCreatedAt))
-        let updatedAt = Date(timeIntervalSince1970: try! row.get(toolUpdatedAt))
-
-        // v0.4 字段（可能不存在）
-        let sourceString = (try? row.get(toolSource)) ?? "custom"
-        let source = ToolSource(rawValue: sourceString) ?? .custom
-        let remoteId = try? row.get(toolRemoteId)
-        let remoteAuthor = try? row.get(toolRemoteAuthor)
-        let remoteVotes = (try? row.get(toolRemoteVotes)) ?? 0
-        let remoteUpdatedAtTimestamp = try? row.get(toolRemoteUpdatedAt)
-        let remoteUpdatedAt = remoteUpdatedAtTimestamp.map { Date(timeIntervalSince1970: $0) }
-
-        // v0.5 Langfuse 字段（可能不存在）
-        let langfuseName = try? row.get(toolLangfuseName)
-        let langfuseVersion = try? row.get(toolLangfuseVersion)
-        let langfuseLabelsJson = try? row.get(toolLangfuseLabels)
-        let langfuseLabels = parseLangfuseLabelsJson(langfuseLabelsJson)
-        let lastSyncedAtTimestamp = try? row.get(toolLastSyncedAt)
-        let lastSyncedAt = lastSyncedAtTimestamp.map { Date(timeIntervalSince1970: $0) }
-        let capabilitiesJSON = try? row.get(toolCapabilities)
-        let parsedCapabilities = parseCapabilitiesJson(capabilitiesJSON)
-        let effectiveCapabilities = parsedCapabilities.isEmpty
-            ? PromptToolCapability.infer(fromName: name, prompt: prompt)
-            : parsedCapabilities
-
-        return PromptTool(
-            id: id,
-            name: name,
-            prompt: prompt,
-            capabilities: effectiveCapabilities,
-            shortcutKeyCode: shortcutKeyCode,
-            shortcutModifiers: shortcutModifiers,
-            isDefault: isDefault,
-            createdAt: createdAt,
-            updatedAt: updatedAt,
-            source: source,
-            remoteId: remoteId,
-            remoteAuthor: remoteAuthor,
-            remoteVotes: remoteVotes,
-            remoteUpdatedAt: remoteUpdatedAt,
-            langfuseName: langfuseName,
-            langfuseVersion: langfuseVersion,
-            langfuseLabels: langfuseLabels,
-            lastSyncedAt: lastSyncedAt
-        )
-    }
-
-    /// 解析 Langfuse labels JSON 字符串
-    private func parseLangfuseLabelsJson(_ json: String?) -> [String] {
-        guard let json = json,
-              let data = json.data(using: .utf8),
-              let labels = try? JSONDecoder().decode([String].self, from: data) else {
-            return []
-        }
-        return labels
-    }
-
-    /// 解析 capabilities JSON 字符串
-    private func parseCapabilitiesJson(_ json: String?) -> [PromptToolCapability] {
-        guard let json,
-              let data = json.data(using: .utf8),
-              let capabilities = try? JSONDecoder().decode([PromptToolCapability].self, from: data) else {
-            return []
-        }
-        return Array(Set(capabilities)).sorted(by: { $0.rawValue < $1.rawValue })
-    }
-
-    /// 将 Langfuse labels 编码为 JSON 字符串
-    private func encodeLangfuseLabels(_ labels: [String]) -> String? {
-        guard !labels.isEmpty,
-              let data = try? JSONEncoder().encode(labels),
-              let json = String(data: data, encoding: .utf8) else {
-            return nil
-        }
-        return json
-    }
-
-    /// 将 capabilities 编码为 JSON 字符串
-    private func encodeCapabilities(_ capabilities: [PromptToolCapability]) -> String? {
-        let normalized = Array(Set(capabilities)).sorted(by: { $0.rawValue < $1.rawValue })
-        guard !normalized.isEmpty,
-              let data = try? JSONEncoder().encode(normalized),
-              let json = String(data: data, encoding: .utf8) else {
-            return nil
-        }
-        return json
-    }
-
-    /// 插入新的 Prompt Tool
-    @discardableResult
-    func insertPromptTool(_ tool: PromptTool) -> Bool {
-        if !onStoreQueue { return storeQueue.sync { self.insertPromptTool(tool) } }
-        guard let db = db else { return false }
-
-        do {
-            // 准备 Langfuse labels JSON
-            let labelsJson = encodeLangfuseLabels(tool.langfuseLabels)
-            let capabilitiesJson = encodeCapabilities(tool.capabilities)
-
-            try db.run(promptToolsTable.insert(
-                toolId <- tool.id.uuidString,
-                toolName <- tool.name,
-                toolPrompt <- tool.prompt,
-                toolShortcutKeyCode <- Int(tool.shortcutKeyCode),
-                toolShortcutModifiers <- Int(tool.shortcutModifiers),
-                toolIsDefault <- tool.isDefault,
-                toolCreatedAt <- tool.createdAt.timeIntervalSince1970,
-                toolUpdatedAt <- tool.updatedAt.timeIntervalSince1970,
-                toolSource <- tool.source.rawValue,
-                toolRemoteId <- tool.remoteId,
-                toolRemoteAuthor <- tool.remoteAuthor,
-                toolRemoteVotes <- tool.remoteVotes,
-                toolRemoteUpdatedAt <- tool.remoteUpdatedAt?.timeIntervalSince1970,
-                toolLangfuseName <- tool.langfuseName,
-                toolLangfuseVersion <- tool.langfuseVersion,
-                toolLangfuseLabels <- labelsJson,
-                toolLastSyncedAt <- tool.lastSyncedAt?.timeIntervalSince1970,
-                toolCapabilities <- capabilitiesJson
-            ))
-            print("✅ Prompt Tool 插入成功: \(tool.name)")
-            NotificationCenter.default.post(name: .promptToolsDidUpdate, object: nil)
-            return true
-        } catch {
-            handleDatabaseError("Prompt Tool 插入失败", error: error)
-            return false
-        }
-    }
-
-    /// 更新 Prompt Tool
-    @discardableResult
-    func updatePromptTool(_ tool: PromptTool) -> Bool {
-        if !onStoreQueue { return storeQueue.sync { self.updatePromptTool(tool) } }
-        guard let db = db else { return false }
-
-        do {
-            // 准备 Langfuse labels JSON
-            let labelsJson = encodeLangfuseLabels(tool.langfuseLabels)
-            let capabilitiesJson = encodeCapabilities(tool.capabilities)
-
-            let query = promptToolsTable.filter(toolId == tool.id.uuidString)
-            try db.run(query.update(
-                toolName <- tool.name,
-                toolPrompt <- tool.prompt,
-                toolShortcutKeyCode <- Int(tool.shortcutKeyCode),
-                toolShortcutModifiers <- Int(tool.shortcutModifiers),
-                toolUpdatedAt <- Date().timeIntervalSince1970,
-                toolSource <- tool.source.rawValue,
-                toolRemoteId <- tool.remoteId,
-                toolRemoteAuthor <- tool.remoteAuthor,
-                toolRemoteVotes <- tool.remoteVotes,
-                toolRemoteUpdatedAt <- tool.remoteUpdatedAt?.timeIntervalSince1970,
-                toolLangfuseName <- tool.langfuseName,
-                toolLangfuseVersion <- tool.langfuseVersion,
-                toolLangfuseLabels <- labelsJson,
-                toolLastSyncedAt <- tool.lastSyncedAt?.timeIntervalSince1970,
-                toolCapabilities <- capabilitiesJson
-            ))
-            print("✅ Prompt Tool 更新成功: \(tool.name)")
-            NotificationCenter.default.post(name: .promptToolsDidUpdate, object: nil)
-            return true
-        } catch {
-            handleDatabaseError("Prompt Tool 更新失败", error: error)
-            return false
-        }
-    }
-
-    /// 删除 Prompt Tool
-    @discardableResult
-    func deletePromptTool(id: UUID) -> Bool {
-        if !onStoreQueue { return storeQueue.sync { self.deletePromptTool(id: id) } }
-        guard let db = db else { return false }
-
-        do {
-            let query = promptToolsTable.filter(toolId == id.uuidString)
-            try db.run(query.delete())
-            print("✅ Prompt Tool 删除成功: \(id)")
-            NotificationCenter.default.post(name: .promptToolsDidUpdate, object: nil)
-            return true
-        } catch {
-            handleDatabaseError("Prompt Tool 删除失败", error: error)
-            return false
-        }
-    }
-
-    /// 初始化默认 Prompt Tools（首次启动时调用）
-    func initializeDefaultToolsIfNeeded() {
-        if !onStoreQueue { return storeQueue.sync { self.initializeDefaultToolsIfNeeded() } }
-        let existingTools = fetchAllPromptTools()
-        
-        // 如果已有工具，不再初始化
-        guard existingTools.isEmpty else {
-            print("📋 已存在 \(existingTools.count) 个 Prompt Tools，跳过初始化")
-            return
-        }
-
-        print("🆕 首次启动，初始化默认 Prompt Tools")
-        for tool in PromptTool.defaultTools {
-            insertPromptTool(tool)
-        }
-    }
-
-    /// 恢复默认 Prompt Tools
-    func restoreDefaultTools() {
-        if !onStoreQueue { return storeQueue.sync { self.restoreDefaultTools() } }
-        let existingTools = fetchAllPromptTools()
-        let defaultTools = PromptTool.defaultTools
-
-        for defaultTool in defaultTools {
-            restoreOrCreateDefaultTool(defaultTool, existingTools: existingTools)
-        }
-
-        print("✅ 默认 Prompt Tools 已恢复")
-    }
-
-    /// 恢复或创建单个默认工具
-    private func restoreOrCreateDefaultTool(_ defaultTool: PromptTool, existingTools: [PromptTool]) {
-        if let existing = findExistingDefaultTool(defaultTool, in: existingTools) {
-            resetToDefaultPrompt(existing, defaultPrompt: defaultTool.prompt)
-        } else if !toolNameExists(defaultTool.name, in: existingTools) {
-            insertPromptTool(defaultTool)
-        }
-    }
-
-    /// 查找已存在的同名默认工具
-    private func findExistingDefaultTool(_ defaultTool: PromptTool, in existingTools: [PromptTool]) -> PromptTool? {
-        return existingTools.first(where: { $0.name == defaultTool.name && $0.isDefault })
-    }
-
-    /// 检查工具名称是否已存在
-    private func toolNameExists(_ name: String, in existingTools: [PromptTool]) -> Bool {
-        return existingTools.contains(where: { $0.name == name })
-    }
-
-    /// 重置为默认 prompt
-    private func resetToDefaultPrompt(_ tool: PromptTool, defaultPrompt: String) {
-        var updated = tool
-        updated.prompt = defaultPrompt
-        updatePromptTool(updated)
-    }
 }
 
 // MARK: - Notification Names

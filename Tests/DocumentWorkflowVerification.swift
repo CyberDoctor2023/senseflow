@@ -7,7 +7,23 @@ import CryptoKit
 /// Focused verification uses production storage/editor code and a private database.
 /// No application launch, clipboard capture, provider request or user history access.
 @main struct DocumentWorkflowVerification {
-    @MainActor static func main() async throws {
+    @MainActor static func main() {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.regular)
+        Task { @MainActor in
+            do { try await verify(); exit(0) }
+            catch { fputs("FAIL document verification: \(error)\n", stderr); exit(1) }
+        }
+        app.run()
+    }
+
+    @MainActor private static func verify() async throws {
+        if let index = CommandLine.arguments.firstIndex(of: "--log-file"), index + 1 < CommandLine.arguments.count {
+            let path = CommandLine.arguments[index + 1]
+            guard freopen(path, "w", stdout) != nil, freopen(path + ".stderr", "w", stderr) != nil else {
+                throw Failure("verification log could not be opened")
+            }
+        }
         setbuf(stdout, nil)
         let output = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
@@ -58,7 +74,6 @@ import CryptoKit
         try require(discarded == nil, "explicit discard removes only draft")
 
         // Initialize AppKit without starting SenseFlow's app delegate or global services.
-        _ = NSApplication.shared
         let writer = RecordingWriter()
         let workspace = WorkspaceWindowCoordinator()
         let host = DocumentWindowHost(workspace: workspace)
@@ -148,6 +163,7 @@ import CryptoKit
         try require(transitionEditor != nil && transitionEditor === findTextView(previewWindow(host)?.contentView), "same native text view survives expansion without placeholder replacement")
         coordinator.preview(sourceItem, anchor: anchor, pinOnOpen: false)
         try require(!coordinator.isPinned && transitionEditor === findTextView(previewWindow(host)?.contentView), "pointer preview reuses current surface without pinning or rebuilding")
+        print("MEASURE initial preview: original=\(coordinator.source?.text == original), editing=\(coordinator.isEditing), key=\(previewWindow(host)?.isKeyWindow == true), editable=\(transitionEditor?.isEditable == true), applicationActive=\(NSApp.isActive), keyWindow=\(NSApp.keyWindow?.windowNumber ?? -1), previewWindow=\(coordinator.previewWindowNumber ?? -1)")
         try require(coordinator.source?.text == original && !coordinator.isEditing && previewWindow(host)?.isKeyWindow == true && transitionEditor?.isEditable == false, "first reading preview has stable key appearance while its native editor remains read-only")
         try require(NSApp.windows.count == windowCount + 1 && nativeWindow.frame == baseFrame, "separate preview leaves history window geometry unchanged")
         let searchAfter = screenBounds(findTextField(nativeWindow.contentView))
@@ -331,7 +347,7 @@ import CryptoKit
                 modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
                 windowNumber: nativeWindow.windowNumber, context: nil, eventNumber: 2, clickCount: 1, pressure: 1
               ) else { throw Failure("other-card right press setup missing") }
-        try require(CardPointerRegion.containsCard(in: nativeWindow, at: otherPress.locationInWindow),
+        try require(workspace.containsCard(in: nativeWindow, at: otherPress.locationInWindow),
             "visible card is recognized independently of preview window monitor order")
         NSApp.sendEvent(otherPress)
         try require(coordinator.source?.itemID == short.id && !host.isTransitioning,

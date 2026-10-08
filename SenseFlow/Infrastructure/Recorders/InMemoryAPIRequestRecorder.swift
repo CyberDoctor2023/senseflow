@@ -31,99 +31,51 @@
 import Foundation
 import Combine
 
-/// 内存 API 请求记录器
-///
-/// 【实现说明】
-/// - 使用 actor 确保线程安全
-/// - 使用 @Published 支持 SwiftUI 响应式
-/// - 只保留最近的记录（可配置数量）
-@MainActor
-final class InMemoryAPIRequestRecorder: ObservableObject, ObservableAPIRequestRecorder {
-
-    // MARK: - Singleton
-
-    /// 单例实例
-    ///
-    /// 【为什么用单例？】
-    /// - 全局唯一的记录器
-    /// - 便于在 DI 容器中注册
-    /// - 便于在 UI 中直接访问（用于展示）
-    ///
-    /// 【注意】
-    /// 虽然是单例，但通过 DI 注入到 Use Case
-    /// 这样既保证了便利性，又保持了可测试性
+/// Bounded diagnostic records; originals and generated tool results are stored elsewhere.
+@MainActor final class InMemoryAPIRequestRecorder: ObservableObject, ObservableAPIRequestRecorder {
     static let shared = InMemoryAPIRequestRecorder()
-
-    // MARK: - Properties
-
-    /// 最后一次记录（可观察）
     @Published private(set) var lastRecord: APIRequestRecord?
-
-    /// 所有记录（可观察，最新在前）
     @Published private(set) var allRecords: [APIRequestRecord] = []
+    private let maxRecords: Int
+    private let maxBytes: Int
+    private var recordCosts: [Int] = []
+    private(set) var retainedBytes = 0
 
-    /// 最大记录数
-    ///
-    /// 【为什么限制数量？】
-    /// - 防止内存无限增长
-    /// - 调试时通常只关心最近的请求
-    /// - 如果需要更多历史，应该用数据库实现
-    private let maxRecords: Int?
-
-    // MARK: - Initialization
-
-    /// 初始化
-    ///
-    /// - Parameter maxRecords: 最大记录数，nil 表示不限制（默认）
-    init(maxRecords: Int? = nil) {
-        self.maxRecords = maxRecords
+    /// Limits apply to diagnostic payloads, including duplicated screenshot base64.
+    init(maxRecords: Int = 50, maxBytes: Int = 32 * 1024 * 1024) {
+        self.maxRecords = max(0, maxRecords)
+        self.maxBytes = max(0, maxBytes)
     }
 
-    // MARK: - APIRequestRecorder
-
-    /// 记录请求
     func record(_ record: APIRequestRecord) async {
-        // 插入到列表开头（最新的在前面）
-        allRecords.insert(record, at: 0)
-
-        // 限制记录数量
-        if let maxRecords, allRecords.count > maxRecords {
+        let cost = payloadCost(record)
+        guard maxRecords > 0, cost <= maxBytes else { return }
+        while !allRecords.isEmpty && (allRecords.count >= maxRecords || retainedBytes > maxBytes - cost) {
             allRecords.removeLast()
+            retainedBytes -= recordCosts.removeLast()
         }
-
-        // 更新最后一次记录（触发 UI 更新）
+        allRecords.insert(record, at: 0)
+        recordCosts.insert(cost, at: 0)
+        retainedBytes += cost
         lastRecord = record
     }
 
-    /// 获取最后一次记录
-    func getLastRecord() async -> APIRequestRecord? {
-        return lastRecord
-    }
-
-    /// 获取所有记录
+    func getLastRecord() async -> APIRequestRecord? { lastRecord }
     func getAllRecords(limit: Int? = nil) async -> [APIRequestRecord] {
-        if let limit = limit {
-            return Array(allRecords.prefix(limit))
-        }
+        if let limit { return Array(allRecords.prefix(max(0, limit))) }
         return allRecords
     }
-
-    /// 清空所有记录
     func clearAll() async {
         allRecords.removeAll()
+        recordCosts.removeAll()
+        retainedBytes = 0
         lastRecord = nil
     }
-}
 
-// MARK: - Factory
-
-extension InMemoryAPIRequestRecorder {
-    /// 创建用于测试的实例
-    ///
-    /// 【测试支持】
-    /// 提供独立的实例，避免测试之间相互影响
-    static func makeForTesting(maxRecords: Int? = 10) -> InMemoryAPIRequestRecorder {
-        return InMemoryAPIRequestRecorder(maxRecords: maxRecords)
+    private func payloadCost(_ record: APIRequestRecord) -> Int {
+        [record.toolName, record.serviceType, record.modelName, record.httpMethod, record.endpoint,
+         record.headersJSON, record.requestBodyJSON, record.messagesJSON, record.parametersJSON,
+         record.responseText, record.error].reduce(0) { $0 + ($1?.utf8.count ?? 0) }
     }
 }
 

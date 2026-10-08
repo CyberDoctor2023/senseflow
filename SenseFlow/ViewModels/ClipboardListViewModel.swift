@@ -55,7 +55,7 @@ enum ClipboardContentFilter: String, CaseIterable { case text, image, code, scre
             guard isWindowPinned != oldValue else { return }
             generation += 1
             pageTask?.cancel(); pageTask = nil; isLoadingMore = false
-            debounceTask?.cancel(); refreshTask?.cancel(); refreshTask = nil; activeQuery = nil
+            debounceTask?.cancel(); refreshTask?.cancel(); refreshTask = nil; activeQuery = nil; pendingHistoryRefresh = false
             isLoading = false
             if !isWindowPinned { Task { [weak self] in await self?.loadItems() } }
         }
@@ -68,6 +68,7 @@ enum ClipboardContentFilter: String, CaseIterable { case text, image, code, scre
     private var pageTask: Task<Void, Never>?
     private var generation = 0
     private var activeQuery: String?
+    private var pendingHistoryRefresh = false
 
     init(repository: ClipboardRepositoryProtocol, actions: HistoryActionCoordinator, thumbnails: ClipboardThumbnailLoader) {
         self.repository = repository; self.actions = actions; self.thumbnails = thumbnails
@@ -75,7 +76,7 @@ enum ClipboardContentFilter: String, CaseIterable { case text, image, code, scre
     private func invalidate() {
         generation += 1
         pageTask?.cancel(); pageTask = nil; isLoadingMore = false
-        debounceTask?.cancel(); refreshTask?.cancel(); refreshTask = nil; activeQuery = nil
+        debounceTask?.cancel(); refreshTask?.cancel(); refreshTask = nil; activeQuery = nil; pendingHistoryRefresh = false
         actions.documents.historyChanged()
     }
     /// Toggles a content filter while preserving any draft excluded by the new filter.
@@ -126,31 +127,46 @@ enum ClipboardContentFilter: String, CaseIterable { case text, image, code, scre
     }
     func loadItems() async { debounceTask?.cancel(); await refresh() }
     func performSearch(query: String) async { searchQuery = query; debounceTask?.cancel(); await refresh() }
-    private func refresh() async {
+    /// Coalesces writes without losing a change that arrives after an in-flight SQL snapshot.
+    func historyDidChange() {
         guard !isWindowPinned else { return }
+        pendingHistoryRefresh = true
+        debounceTask?.cancel()
+        _ = startRefresh()
+    }
+    private func refresh() async { await startRefresh()?.value }
+    private func startRefresh() -> Task<Void, Never>? {
+        guard !isWindowPinned else { return nil }
         let query = searchQuery
-        if activeQuery == query, let refreshTask { await refreshTask.value; return }
+        if activeQuery == query, let refreshTask { return refreshTask }
         generation += 1
         pageTask?.cancel(); pageTask = nil; isLoadingMore = false
         let token = generation
         activeQuery = query
         isLoading = true
-        refreshTask = Task { [weak self] in
+        let task = Task { [weak self] in
             guard let self else { return }
-            do {
-                let result = query.isEmpty ? try await repository.fetchRecent(limit: pageSize, offset: 0) : try await repository.search(query: query, limit: pageSize, offset: 0)
-                guard !Task.isCancelled, !isWindowPinned, token == generation, query == searchQuery else { return }
-                loadedItems = result
-                hasMore = result.count == pageSize
-                errorMessage = nil
-            } catch {
-                guard !Task.isCancelled, token == generation else { return }
-                errorMessage = "历史加载失败：\(error.localizedDescription)"
-            }
+            repeat {
+                pendingHistoryRefresh = false
+                do {
+                    let result = query.isEmpty
+                        ? try await repository.fetchRecent(limit: pageSize, offset: 0)
+                        : try await repository.search(query: query, limit: pageSize, offset: 0)
+                    guard !Task.isCancelled, !isWindowPinned, token == generation, query == searchQuery else { return }
+                    loadedItems = result
+                    hasMore = result.count == pageSize
+                    errorMessage = nil
+                } catch {
+                    guard !Task.isCancelled, token == generation else { return }
+                    errorMessage = "历史加载失败：\(error.localizedDescription)"
+                }
+            } while pendingHistoryRefresh
+            guard !Task.isCancelled, token == generation else { return }
             isLoading = false
             refreshTask = nil; activeQuery = nil
+            if items.isEmpty { await loadMoreIfNeeded(after: nil) }
         }
-        await refreshTask?.value
-        if items.isEmpty { await loadMoreIfNeeded(after: nil) }
+        refreshTask = task
+        return task
     }
 }

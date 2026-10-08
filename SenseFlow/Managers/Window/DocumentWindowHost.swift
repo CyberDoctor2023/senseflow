@@ -192,6 +192,8 @@ enum DocumentCloseChoice { case save, keepDraft, discard, cancel }
         localDismissMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             guard let self, self.panel?.isVisible == true, !self.isClosing else { return event }
             guard event.window !== self.panel else { return event }
+            if let window = event.window, self.workspace.contains(window),
+               self.workspace.containsCard(in: window, at: event.locationInWindow) { return event }
             _ = self.onPointerDismiss?()
             return event
         }

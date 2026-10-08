@@ -238,45 +238,4 @@ import SwiftUI
         }
     }
 
-    // MARK: - Database Test
-
-    private func testDatabase() {
-        print("\n🧪 开始测试数据库...")
-
-        // 测试插入文本
-        let success1 = DatabaseManager.shared.insertItem(
-            type: .text,
-            textContent: "测试文本 1",
-            appName: "Xcode",
-            appPath: "/Applications/Xcode.app"
-        )
-        print(success1 ? "✅ 插入文本成功" : "❌ 插入文本失败")
-
-        // 测试插入重复文本（应该被去重）
-        let success2 = DatabaseManager.shared.insertItem(
-            type: .text,
-            textContent: "测试文本 1",
-            appName: "Xcode",
-            appPath: "/Applications/Xcode.app"
-        )
-        print(success2 ? "❌ 去重失败" : "✅ 去重成功")
-
-        // 测试插入另一条文本
-        let success3 = DatabaseManager.shared.insertItem(
-            type: .text,
-            textContent: "测试文本 2",
-            appName: "Safari",
-            appPath: "/Applications/Safari.app"
-        )
-        print(success3 ? "✅ 插入文本成功" : "❌ 插入文本失败")
-
-        // 查询所有记录
-        let items = DatabaseManager.shared.fetchRecentItems()
-        print("\n📊 当前记录数: \(items.count)")
-        for item in items {
-            print("  - [\(item.type.rawValue)] \(item.previewText) | \(item.appName) | \(item.relativeTimeString)")
-        }
-
-        print("\n✅ 数据库测试完成\n")
-    }
 }
