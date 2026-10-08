@@ -8,7 +8,7 @@
 
 import Foundation
 import Vision
-import AppKit
+import ImageIO
 
 /// OCR 服务（使用 Vision 框架识别图片中的文字）
 /// 使用 VNRecognizeTextRequest（macOS 12+ 兼容）
@@ -26,30 +26,12 @@ actor OCRService {
     /// - Parameter imageData: 图片数据
     /// - Returns: 识别出的文本，失败返回 nil
     func recognizeText(from imageData: Data) async -> String? {
-        guard let cgImage = NSImage(data: imageData)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+        guard let source = CGImageSourceCreateWithData(imageData as CFData, nil),
+              let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
             print("❌ OCR: 无法从 Data 创建 CGImage")
             return nil
         }
 
-        return await recognizeText(from: cgImage)
-    }
-
-    /// 识别图片中的文字（从 NSImage）
-    /// - Parameter image: 要识别的图片
-    /// - Returns: 识别出的文本，失败返回 nil
-    func recognizeText(from image: NSImage) async -> String? {
-        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-            print("❌ OCR: 无法转换为 CGImage")
-            return nil
-        }
-
-        return await recognizeText(from: cgImage)
-    }
-
-    /// 识别图片中的文字（从 CGImage）
-    /// - Parameter cgImage: CGImage
-    /// - Returns: 识别出的文本，失败返回 nil
-    func recognizeText(from cgImage: CGImage) async -> String? {
         return await performRecognition(from: cgImage)
     }
 
