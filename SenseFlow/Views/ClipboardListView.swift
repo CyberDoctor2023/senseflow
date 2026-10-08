@@ -8,6 +8,7 @@
 import SwiftUI
 import Combine
 import AppKit
+import QuartzCore
 
 /// 剪贴板列表视图（横向滚动）
 ///
@@ -202,17 +203,22 @@ struct HorizontalWheelRegion: NSViewRepresentable {
     static func dismantleNSView(_ view: WheelView, coordinator: ()) { view.unregister() }
     final class WheelView: NSView, HistoryWheelRouting {
         var isEnabled = true {
-            didSet { if !isEnabled { finishWheelGesture() } }
+            didSet { if !isEnabled { stopMomentum(); finishWheelGesture() } }
         }
         var onScroll: (() -> Void)?
         private weak var registeredPanel: KeyboardAcceptingPanel?
         private weak var gestureScroll: NSScrollView?
         private var wheelEndTimer: Timer?
         private var lastMouseWheelDelta: CGFloat = 0
-        private var momentumTimer: Timer?
+        private var momentumDisplayLink: CADisplayLink?
+        private var momentumDisplayTarget: HistoryMomentumDisplayTarget?
+        private let momentumSpring = Spring.smooth
         private var wheelVelocity: CGFloat = 0
         private var lastWheelTime: TimeInterval?
         private var momentumStart: TimeInterval = 0
+        private var momentumTarget: Double = 0
+        private var momentumInitialVelocity: Double = 0
+        private var momentumPreviousValue: Double = 0
         var trackpadContactsPresent: () -> Bool = { TrackpadRevealMonitor.shared.hasScrollingContacts }
         private var consumingVerticalTouchGesture = false
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -252,6 +258,7 @@ struct HorizontalWheelRegion: NSViewRepresentable {
             if event.momentumPhase.contains(.ended) || event.momentumPhase.contains(.cancelled)
                 || event.phase.contains(.cancelled) { consumingVerticalTouchGesture = false }
             if consumesTouch {
+                stopMomentum()
                 finishWheelGesture()
                 lastMouseWheelDelta = 0
                 return true
@@ -314,48 +321,53 @@ struct HorizontalWheelRegion: NSViewRepresentable {
             return true
         }
         private func stopMomentum() {
-            guard momentumTimer != nil else { return }
-            momentumTimer?.invalidate()
-            momentumTimer = nil
-            if let scroll = gestureScroll,
-               let ended = NativeHistoryWheelEvent.make(pixels: 0, phase: 0, momentum: 3) {
-                scroll.scrollWheel(with: ended)
-            }
+            guard momentumDisplayLink != nil else { return }
+            momentumDisplayLink?.invalidate()
+            momentumDisplayLink = nil
+            momentumDisplayTarget = nil
             gestureScroll = nil
         }
         private func beginMomentum() {
             guard let scroll = gestureScroll else { return }
             finishWheelGesture()
             guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, abs(wheelVelocity) > 8 else { return }
+            let clip = scroll.contentView
+            guard abs(clip.bounds.minX - clip.constrainBoundsRect(clip.bounds).minX) < 0.5 else { return }
             gestureScroll = scroll
-            momentumStart = ProcessInfo.processInfo.systemUptime
-            if let event = NativeHistoryWheelEvent.make(pixels: 0, phase: 0, momentum: 1) {
-                scroll.scrollWheel(with: event)
-            }
-            let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.advanceMomentum() }
-            }
-            momentumTimer = timer
-            RunLoop.main.add(timer, forMode: .common)
+            momentumStart = CACurrentMediaTime()
+            momentumInitialVelocity = Double(wheelVelocity)
+            // The no-bounce system spring is critically damped. Matching its
+            // target to the initial velocity produces monotonic deceleration.
+            momentumTarget = momentumInitialVelocity / sqrt(momentumSpring.stiffness / momentumSpring.mass)
+            momentumPreviousValue = 0
+            let target = HistoryMomentumDisplayTarget(view: self)
+            momentumDisplayTarget = target
+            let link = displayLink(target: target, selector: #selector(HistoryMomentumDisplayTarget.tick(_:)))
+            momentumDisplayLink = link
+            link.add(to: .main, forMode: .common)
         }
-        private func advanceMomentum() {
+        fileprivate func advanceMomentum(at timestamp: CFTimeInterval) {
+            let elapsed = max(0, timestamp - momentumStart)
             guard let scroll = gestureScroll, window?.isVisible == true,
                   abs(wheelVelocity) > 8,
-                  ProcessInfo.processInfo.systemUptime - momentumStart < 1.2 else {
-                if let scroll = gestureScroll,
-                   let event = NativeHistoryWheelEvent.make(pixels: 0, phase: 0, momentum: 3) {
-                    scroll.scrollWheel(with: event)
-                }
+                  elapsed < 1.2 else {
                 stopMomentum()
                 gestureScroll = nil
                 wheelVelocity = 0
                 lastWheelTime = nil
                 return
             }
-            wheelVelocity *= CGFloat(exp(-1.0 / 60 / 0.20))
-            if let event = NativeHistoryWheelEvent.make(pixels: wheelVelocity / 60, phase: 0, momentum: 2) {
-                scroll.scrollWheel(with: event)
-            }
+            let value = momentumSpring.value(target: momentumTarget, initialVelocity: momentumInitialVelocity, time: elapsed)
+            wheelVelocity = CGFloat(momentumSpring.velocity(target: momentumTarget, initialVelocity: momentumInitialVelocity, time: elapsed))
+            let delta = value - momentumPreviousValue
+            momentumPreviousValue = value
+            let clip = scroll.contentView
+            var proposed = clip.bounds
+            proposed.origin.x -= CGFloat(delta)
+            let constrained = clip.constrainBoundsRect(proposed)
+            clip.scroll(to: constrained.origin)
+            scroll.reflectScrolledClipView(clip)
+            if abs(proposed.minX - constrained.minX) > 0.5 { stopMomentum() }
         }
         private func finishWheelGesture() {
             wheelEndTimer?.invalidate(); wheelEndTimer = nil
@@ -386,6 +398,13 @@ struct HorizontalWheelRegion: NSViewRepresentable {
             return nil
         }
     }
+}
+
+/// A weak display-link target keeps the history view's lifetime independent of the callback.
+@MainActor private final class HistoryMomentumDisplayTarget: NSObject {
+    weak var view: HorizontalWheelRegion.WheelView?
+    init(view: HorizontalWheelRegion.WheelView) { self.view = view }
+    @objc func tick(_ link: CADisplayLink) { view?.advanceMomentum(at: link.targetTimestamp) }
 }
 
 /// Builds a pixel gesture from the delivered NSEvent values rather than rewriting device-specific backing fields.
@@ -427,7 +446,7 @@ private struct HistoryPointerWave: ViewModifier {
             let lift: CGFloat = elevation(geometry)
             return effect.scaleEffect(1 + lift * 0.02, anchor: .bottom).offset(y: -12 * lift)
         }
-        .animation(.easeOut(duration: reduceMotion ? 0 : Constants.SelectionFeedback.duration), value: strength)
+        .animation(reduceMotion ? nil : .snappy(duration: Constants.SelectionFeedback.duration), value: strength)
     }
     private func elevation(_ geometry: GeometryProxy) -> CGFloat {
         guard !reduceMotion, let pointerX else { return 0 }

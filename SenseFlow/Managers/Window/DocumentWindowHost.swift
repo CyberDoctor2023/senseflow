@@ -133,7 +133,7 @@ enum DocumentCloseChoice { case save, keepDraft, discard, cancel }
         startDismissMonitoring()
         NSAnimationContext.runAnimationGroup { context in
             context.duration = reducedMotion ? 0 : 0.32
-            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 0.8, 0.22, 1)
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             window.animator().setFrame(target, display: true)
         } completionHandler: { [weak self] in
             guard let self, self.transitionID == token else { return }
@@ -174,7 +174,7 @@ enum DocumentCloseChoice { case save, keepDraft, discard, cancel }
         isTransitioning = true
         NSAnimationContext.runAnimationGroup { context in
             context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : returnToCard ? 0.48 : 0.16
-            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 0.8, 0.22, 1)
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             if returnToCard { panel.animator().setFrame(cardFrame, display: true) }
             panel.animator().alphaValue = 0
         } completionHandler: { [weak self] in

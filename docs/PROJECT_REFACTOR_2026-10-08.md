@@ -213,3 +213,5 @@ OCR诊断：只读隔离数据库确认403已识别、405尚无结果，404已�
 第二十八批动效合同：A经典/B起伏共享滚动物理。鼠标没有系统momentum的输入停止后按速度指数衰减；新输入立即取消旧惯性，边缘使用NSScrollView弹性不增加自绘弹簧。已有native momentum不叠加。有限计时器在停止、隐藏/拆卸、反向时结束；减少动态效果时不生成额外惯性。初步参数时间常数0.20s、速度上限1200pt/s、停止阈值8pt/s、最长1.2s，参数仅作为首版体验值不是苹果官方常量。完成条件：构建、真实窗口轮事件停止/反向/边缘验证及实际体验。官方NSEvent.momentumPhase表示原生惯性阶段，NSScrollView.horizontalScrollElasticity只定义弹性，两者不能互相代替。
 
 阶段 28 验证与替换：`out/2026-10-08-project-refactor/build-stage28-final.log` 构建成功；`scroll-stage28.log` 原生滚动、边缘回弹及末卡可达回归通过。正常退出旧版后通过 DeployDevelopment.py stage28 替换，旧版保存在 `/Users/jack/Applications/senseflow-development-2026-10-08/SenseFlow-before-stage28.app`。新版 PID 57401，CUA 确认历史窗口及卡片加载。惯性手感仍需真实鼠标体验，不将自动回归视为主观动效验收。
+
+第二十九批平台动效替换：[合同、官方依据、审查与验证](MOTION_PLATFORM_2026-10-08.md)。显示同步 + 系统 Spring 替代固定 Timer/指数积分，系统曲线与阶段/符号动效替代手写窗口贝塞尔、教程抛物线、pin 延迟及菜单栏 Timer。新增真实释放断言揭示 stage28 自造惯性事件位移为 0，删除这条失效链路。stage29 已构建、滚动/反向/原生回弹、预览编辑和教程回归通过，正常备份替换启动；GPU/单帧性能、实际手感未完成验收，不据单次 CPU 数据宣称提速。

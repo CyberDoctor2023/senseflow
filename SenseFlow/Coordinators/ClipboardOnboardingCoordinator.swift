@@ -217,22 +217,13 @@ import QuartzCore
         guard visibility == .teasing, let rest = teaserRestFrame else { return }
         let elapsed = max(0, time - teaserStart)
         var frame = rest
-        let rise = UnitCurve.bezier(startControlPoint: UnitPoint(x: 1.0 / 3, y: 1),
-                                   endControlPoint: UnitPoint(x: 2.0 / 3, y: 1))
-        if elapsed < 0.32 {
-            let progress = rise.value(at: elapsed / 0.32)
-            frame.origin.y = teaserStartY + (rest.minY - teaserStartY) * progress
+        if elapsed < 0.6 {
+            frame.origin.y = teaserStartY + CGFloat(Spring.snappy.value(
+                target: Double(rest.minY - teaserStartY), time: elapsed))
         } else {
-            var phase = (elapsed - 0.32).truncatingRemainder(dividingBy: 2.1)
-            // Each impact immediately launches a smaller ballistic rebound.
-            for (height, duration) in [(24.0, 0.42), (8.0, 0.26), (2.5, 0.18)] {
-                if phase < duration {
-                    let progress = phase / duration
-                    frame.origin.y += 4 * height * progress * (1 - progress)
-                    break
-                }
-                phase -= duration
-            }
+            let phase = (elapsed - 0.6).truncatingRemainder(dividingBy: 2.1)
+            let rebound: Double = Spring.bouncy.value(target: 0, initialVelocity: 240, time: phase)
+            frame.origin.y += CGFloat(rebound)
         }
         panel.setFrameOrigin(frame.origin)
         positionLaunchPrompt()
@@ -426,7 +417,7 @@ private struct ClipboardLaunchPrompt: View {
                 startPoint: .top, endPoint: .bottom), in: .rect(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.black.opacity(0.12), lineWidth: 1))
             .offset(y: pressed ? 3 : 0)
-            .animation(reduceMotion ? nil : .spring(duration: 0.8, bounce: 0.15)
+            .animation(reduceMotion ? nil : .bouncy(duration: 0.8)
                 .delay(Double(index) * 0.12).repeatForever(autoreverses: true), value: breathing)
         }
         .frame(width: name.isEmpty ? 64 : 90, height: 66)

@@ -412,6 +412,8 @@ import CryptoKit
         print("PASS document workflow verification completed; no user history modified")
     }
     @MainActor private static func verifyHistoryWheel(_ nativeWindow: KeyboardAcceptingPanel) async throws {
+        let cpuStart = clock()
+        let wallStart = ProcessInfo.processInfo.systemUptime
         func historyWheelRegion(_ view: NSView?) -> HorizontalWheelRegion.WheelView? {
             guard let view else { return nil }
             if let region = view as? HorizontalWheelRegion.WheelView { return region }
@@ -458,7 +460,7 @@ import CryptoKit
                     "high-resolution wheel delivers precise deltas without a gesture phase")
         let pixelBefore = wheelScroll.contentView.bounds.origin.x
         nativeWindow.sendEvent(pixelEvent)
-        try await Task.sleep(nanoseconds: 180_000_000)
+        try await Task.sleep(nanoseconds: 80_000_000)
         try require(abs(wheelScroll.contentView.bounds.origin.x - pixelBefore - 48) < 1,
                     "unphased precise vertical wheel scrolls history horizontally by pixel distance")
         pixelWheel.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(CGScrollPhase.began.rawValue))
@@ -466,9 +468,24 @@ import CryptoKit
         wheelRegion.trackpadContactsPresent = { false }
         let smoothMouseBefore = wheelScroll.contentView.bounds.origin.x
         nativeWindow.sendEvent(gestureEvent)
-        try await Task.sleep(nanoseconds: 180_000_000)
+        try await Task.sleep(nanoseconds: 80_000_000)
         try require(abs(wheelScroll.contentView.bounds.origin.x - smoothMouseBefore - 48) < 1,
                     "phased precise mouse wheel still scrolls without physical trackpad contacts")
+        let releasePosition = wheelScroll.contentView.bounds.origin.x
+        try await Task.sleep(nanoseconds: 250_000_000)
+        let momentumPosition = wheelScroll.contentView.bounds.origin.x
+        print("MEASURE release momentum distance: \(momentumPosition - releasePosition)pt")
+        print("MEASURE release scenario: processCPU=\(Double(clock() - cpuStart) / Double(CLOCKS_PER_SEC))s wall=\(ProcessInfo.processInfo.systemUptime - wallStart)s")
+        try require(momentumPosition > releasePosition + 2, "ordinary mouse release continues moving with the platform spring")
+        guard let reverseCG = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1,
+                                      wheel1: 48, wheel2: 0, wheel3: 0) else { throw Failure("reverse wheel missing") }
+        reverseCG.location = wheelCG.location
+        guard let reverseEvent = NSEvent(cgEvent: reverseCG) else { throw Failure("reverse event missing") }
+        nativeWindow.sendEvent(reverseEvent)
+        try await Task.sleep(nanoseconds: 25_000_000)
+        print("MEASURE reverse wheel displacement after 25ms: \(wheelScroll.contentView.bounds.origin.x - momentumPosition)pt")
+        try require(wheelScroll.contentView.bounds.origin.x < momentumPosition - 20,
+                    "reverse wheel input interrupts ongoing momentum on the next rendered frame")
         wheelRegion.trackpadContactsPresent = { true }
         let gestureBefore = wheelScroll.contentView.bounds.origin.x
         nativeWindow.sendEvent(gestureEvent)
@@ -509,6 +526,8 @@ import CryptoKit
                     "native elasticity settles inside the scroll boundary after wheel release")
         try require(lastCardRight <= clip.bounds.maxX - 27 && lastCardRight >= clip.bounds.maxX - 29,
                     "last history card is fully reachable with the same trailing content margin")
+        let cpuSeconds = Double(clock() - cpuStart) / Double(CLOCKS_PER_SEC)
+        print("MEASURE native scroll scenario: processCPU=\(cpuSeconds)s wall=\(ProcessInfo.processInfo.systemUptime - wallStart)s; includes native rendering, not frame latency")
     }
     @MainActor private static func makeSurface(store: DatabaseManager, repository: DocumentRepository, coordinator: DocumentPreviewCoordinator, workspace: WorkspaceWindowCoordinator, writer: RecordingWriter) async -> (KeyboardAcceptingPanel, ClipboardListViewModel) {
         let actions = HistoryActionCoordinator(documents: coordinator, repository: repository, writer: writer, onPaste: {})

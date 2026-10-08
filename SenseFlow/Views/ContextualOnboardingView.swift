@@ -246,7 +246,7 @@ struct ClipboardFingerDemo: View {
                             switch phase {
                             case .reset: .linear(duration: 0.9)
                             case .appear: .easeInOut(duration: 0.2)
-                            case .slide: .timingCurve(0.16, 0.85, 0.22, 1, duration: vertical ? 0.7 : 1.1)
+                            case .slide: .smooth(duration: vertical ? 0.7 : 1.1)
                             case .pause: .linear(duration: 0.9)
                             case .disappear: .easeOut(duration: 0.2)
                             }

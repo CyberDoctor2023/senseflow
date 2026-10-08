@@ -610,3 +610,5 @@ Apple Doc MCP核对withAnimation(_:completionCriteria:_:completion:)在所有动
 - 2026-10-08：原生录屏会话采用QLPreviewPanel，Apple Doc MCP读取 /documentation/quicklookui/qlpreviewpanel（technology名称选择不可解析，但页面返回API）确认shared、dataSource、reloadData、delegate。官方对应 https://developer.apple.com/documentation/quicklookui/qlpreviewpanel 。窗口池和焦点行为由实际原生验证负责，不把页面描述当作焦点保证。
 
 - 阶段 28 滚动惯性：Apple Doc MCP 查询 [NSEvent.momentumPhase](https://developer.apple.com/documentation/appkit/nsevent/momentumphase) 与 [NSScrollView.horizontalScrollElasticity](https://developer.apple.com/documentation/appkit/nsscrollview/horizontalscrollelasticity)。无系统惯性的鼠标补充衰减参数为项目选择，非苹果官方预设。
+
+- 阶段 29 平台动效：Apple Doc MCP 确认 NSView.displayLink（macOS14）同步视图所在显示器，Spring 提供 smooth/snappy/bouncy 及位置/速度计算，SymbolEffect 提供原生符号反馈，CAMediaTimingFunction(name:) 使用命名曲线。事实、链接、不能原生替代的边界与原生验证见 [动效平台替换合同](MOTION_PLATFORM_2026-10-08.md)。普通鼠标惯性事件适配属于应用逻辑，不把公开 API 当作苹果 Dock 公式或官方长按阈值。
