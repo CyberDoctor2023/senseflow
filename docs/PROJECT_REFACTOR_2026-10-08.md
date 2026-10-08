@@ -203,3 +203,5 @@ OCR诊断：只读隔离数据库确认403已识别、405尚无结果，404已�
 第二十五批取消合同：当前产品hover只反馈、长按阈值提交预览，pointerLeft仍会取消候选加载，属于旧hover预览生命周期残留。移除离开原卡对已接受长按请求的取消；离开只清hover身份。保留新意图、滚动、隐藏和关闭取消，防止旧请求覆盖新请求。现有文档再次打开回归重跑，并加入加载过程中离开原卡仍完成预览断言；不将此作为录屏Quick Look根因声明。
 
 第二十五批证据：build-stage25.log与document-stage25.log完整原生回归通过。首次请求后立即pointerLeft仍成功呈现，关闭再次打开、替换、原文/草稿、连续滚动与OCR错误断言保持。仅一次通过不足以宣称间歇故障根因已证实。生产pointerLeft移除旧候选取消，所有显式取消入口保持；当前运行仍为stage24诊断版，stage25未部署，临时录屏诊断仍待删除。
+
+第二十六批诊断证据：生产WindowFactory创建A/B两窗口共享同一HistoryActionCoordinator，两份ClipboardListView都绑定quickLookURL。隔离VerifyCapturePair.swift复现一个可见生产面板及一个隐藏面板共享模型，capture-pair-stage26.log仍通过原生QLPreviewPanel可见及媒体/原件断言，不能以双绑定为录屏失败根因。未替换预览实现、未删除系统路径来掩盖问题；真实入口日志仍等待物理事件证据。
