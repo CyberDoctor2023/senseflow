@@ -19,7 +19,7 @@
 //
 //  2. 单一职责原则（SRP）：只负责"执行工具"这一个业务场景
 //     - 不负责数据持久化（Repository 的职责）
-//     - 不负责快捷键注册（RegisterToolHotKey 的职责）
+//     - 不负责快捷键注册（AppHotKeyCoordinator 的职责）
 //     - 不负责 UI 交互（Coordinator 的职责）
 //
 //  3. 开闭原则（OCP）：对扩展开放，对修改关闭
