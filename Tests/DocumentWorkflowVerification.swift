@@ -157,6 +157,7 @@ import CryptoKit
         try await Task.sleep(nanoseconds: 50_000_000)
         try require(coordinator.source == nil && !coordinator.isLoading, "older card press cannot override a newer right-click intent")
         coordinator.preview(sourceItem, anchor: anchor, pinOnOpen: false, expectedRequest: latestPress)
+        coordinator.pointerLeft(sourceItem.id)
         try await waitUntil { coordinator.source != nil && findTextView(previewWindow(host)?.contentView) != nil }
         let transitionEditor = findTextView(previewWindow(host)?.contentView)
         try await waitUntil { !host.isTransitioning }

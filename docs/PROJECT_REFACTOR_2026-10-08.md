@@ -195,3 +195,11 @@ OCR诊断：只读隔离数据库确认403已识别、405尚无结果，404已�
 第二十二批构建/运行证据：build-stage22.log通过，旧版正常退出后保存SenseFlow-before-stage22.app，新包签名验证并启动PID48126。CUA选择真实录屏分类，索引及坐标右键长按后历史保持可见，但AX及截图未观察到Quick Look窗口，因此仅证明当前观察未发生历史消失，不证明录屏预览已验收；继续定位按压触发与呈现链。未修改用户录屏原件、未粘贴或触发播放。
 
 第二十三批诊断证据：检查既有capture-stage7验证发现其使用普通titled NSWindow且主动激活，与生产borderless/nonactivating面板不一致。隔离VerifyCapturePanel.swift仅将窗口替换为生产KeyboardAcceptingPanel样式并去掉主动激活，使用当前模块及隔离示例原件，capture-panel-stage23.log通过系统QLPreviewPanel实际可见断言、文件原件/去重/筛选/缩略图校验。这排除“这种面板不能呈现Quick Look”的假设，但没有覆盖FloatingWindowManager自动隐藏和物理长按链；不修改生产逻辑伪造根因。下一步应对真实长按入口与quickLookURL时序进行有界诊断，最终回归仍未完成。
+
+第二十四批诊断合同：为录屏长按真实链添加Debug有界日志（最多12次入口），只输出入口、详情类型、绑定状态与错误类别，不含内容/路径/ID。记录完成后删除诊断，不保留生产调试UI。与现有窗口自动隐藏判断一起核对，不根据CUA长按无变化直接猜根因。
+
+第二十四批运行证据：build-stage24.log通过，正常退出stage22后保留SenseFlow-before-stage24.app，诊断版PID50350启动。CUA实际分类后索引右键保持1500ms，AX无变化且recording-stage24.log无入口日志，不能证明生产长按故障根因；请求用户物理长按补齐事件证据，不把自动化动作当作实机输入。另代码审查发现pointerLeft在加载候选尚未成为source时取消请求，此项可能关联再打开超时但尚无调用证据，不能直接删除取消保护。当前临时诊断代码未提交，定位后删除。
+
+第二十五批取消合同：当前产品hover只反馈、长按阈值提交预览，pointerLeft仍会取消候选加载，属于旧hover预览生命周期残留。移除离开原卡对已接受长按请求的取消；离开只清hover身份。保留新意图、滚动、隐藏和关闭取消，防止旧请求覆盖新请求。现有文档再次打开回归重跑，并加入加载过程中离开原卡仍完成预览断言；不将此作为录屏Quick Look根因声明。
+
+第二十五批证据：build-stage25.log与document-stage25.log完整原生回归通过。首次请求后立即pointerLeft仍成功呈现，关闭再次打开、替换、原文/草稿、连续滚动与OCR错误断言保持。仅一次通过不足以宣称间歇故障根因已证实。生产pointerLeft移除旧候选取消，所有显式取消入口保持；当前运行仍为stage24诊断版，stage25未部署，临时录屏诊断仍待删除。

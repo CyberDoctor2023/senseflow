@@ -53,17 +53,13 @@ import AppKit
         host.onPointerDismiss = { [weak self] in self?.dismissPointerPreview() ?? false }
     }
 
-    /// Hover only updates pointer lifetime; every content type requires right-click to open.
+    /// Hover only updates pointer lifetime; an accepted press owns preview loading.
     func pointerEntered(_ item: ClipboardItem, anchor: CGRect) {
         lastHoveredID = item.id
         if source?.itemID == item.id { self.anchor = anchor; outsideSince = nil; return }
     }
     func pointerLeft(_ itemID: Int64) {
         if lastHoveredID == itemID { lastHoveredID = nil }
-        if candidateItemID == itemID, source?.itemID != itemID {
-            cancelCandidate()
-            if source != nil && !isPinned { startReadingTimer() }
-        }
     }
     /// Reserves the existing request generation before source-card press feedback.
     func beginPointerPreviewIntent() -> UUID {
