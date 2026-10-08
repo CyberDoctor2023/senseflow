@@ -596,3 +596,5 @@ Apple Doc MCP核对withAnimation(_:completionCriteria:_:completion:)在所有动
 本批未升级SDK、修改外部端点或引入新SQL行为；SQLite文档事务保留原实现与单一数据库队列，实际迁移和草稿验证覆盖这些边界。
 
 2026-10-08 OCR队列重构复用既有HistoryMediaLoader/Vision接口，未引入新Apple API。Apple Doc MCP的ImageIO技术选择无法解析，CGImageSourceCreateImageAtIndex文档请求返回404；因此本批不据此修改图像解码API。
+
+缩略图等待者取消依据Apple Swift `withTaskCancellationHandler(operation:onCancel:isolation:)`（Apple Doc MCP读取2026-10-08）：取消触发独立handler；actor中注销等待者，不能假定等待共享任务会自动取消该任务。https://developer.apple.com/documentation/swift/withtaskcancellationhandler(operation:oncancel:isolation:)

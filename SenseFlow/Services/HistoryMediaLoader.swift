@@ -5,6 +5,7 @@ import ImageIO
 /// Loads original media and prepares derivatives away from UI and database executors.
 enum HistoryMediaLoader {
     static func imageData(for item: ClipboardItem) async throws -> Data {
+        try Task.checkCancellation()
         if let data = item.imageData { return data }
         guard let path = item.blobPath else { throw DocumentStoreError.missing }
         return try await Task.detached(priority: .userInitiated) {
@@ -14,6 +15,7 @@ enum HistoryMediaLoader {
 
     static func imagePreview(for item: ClipboardItem, pixels: Int) async throws -> CGImage {
         let data = try await imageData(for: item)
+        try Task.checkCancellation()
         return try await Task.detached(priority: .userInitiated) {
             guard pixels > 0, let source = CGImageSourceCreateWithData(data as CFData, nil),
                   let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [

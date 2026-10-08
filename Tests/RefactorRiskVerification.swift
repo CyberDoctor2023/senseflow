@@ -128,6 +128,47 @@ import AppKit
         try require(oversizedFirst != nil && oversizedSecond != nil && oversizedFirst !== oversizedSecond,
                     "a thumbnail above the byte budget remains usable without being retained")
         let original = try await store.performStoreOperation { try store.loadHistoryDetail(itemID: summary.id, revision: summary.uniqueId) }
+        let sharedRepository = GatedThumbnailRepository(content: content)
+        let sharedLoader = ClipboardThumbnailLoader(repository: sharedRepository)
+        let firstWaiter = Task { await sharedLoader.thumbnail(for: summary, pixels: 96) }
+        let secondWaiter = Task { await sharedLoader.thumbnail(for: summary, pixels: 96) }
+        while await sharedRepository.loads < 1 { await Task.yield() }
+        // Allow both consumers to register before cancellation; the gate prevents completion.
+        for _ in 0..<20 { await Task.yield() }
+        firstWaiter.cancel()
+        let cancelled = await firstWaiter.value
+        await sharedRepository.releaseAll()
+        let survivor = await secondWaiter.value
+        let sharedReads = await sharedRepository.loads
+        try require(cancelled == nil && survivor != nil && sharedReads == 1,
+                    "cancelling one thumbnail waiter preserves the shared request")
+        let boundedRepository = GatedThumbnailRepository(content: content)
+        let boundedLoader = ClipboardThumbnailLoader(repository: boundedRepository)
+        let activeFirst = Task { await boundedLoader.thumbnail(for: summary, pixels: 96) }
+        let activeSecond = Task { await boundedLoader.thumbnail(for: summary, pixels: 120) }
+        while await boundedRepository.loads < 2 { await Task.yield() }
+        let queued = Task { await boundedLoader.thumbnail(for: summary, pixels: 160) }
+        for _ in 0..<20 { await Task.yield() }
+        queued.cancel()
+        let queuedResult = await queued.value
+        await boundedRepository.releaseAll()
+        let activeImages = [await activeFirst.value, await activeSecond.value]
+        let boundedReads = await boundedRepository.loads
+        let peakLoads = await boundedRepository.peakLoads
+        try require(queuedResult == nil && activeImages.allSatisfy { $0 != nil } && boundedReads == 2 && peakLoads == 2,
+                    "queued cancellation avoids original reads and concurrent loads stay bounded")
+        let replacementRepository = GatedThumbnailRepository(content: content)
+        let replacementLoader = ClipboardThumbnailLoader(repository: replacementRepository)
+        let obsolete = Task { await replacementLoader.thumbnail(for: summary, pixels: 96) }
+        while await replacementRepository.loads < 1 { await Task.yield() }
+        obsolete.cancel()
+        let obsoleteImage = await obsolete.value
+        let replacement = Task { await replacementLoader.thumbnail(for: summary, pixels: 96) }
+        while await replacementRepository.loads < 2 { await Task.yield() }
+        await replacementRepository.releaseAll()
+        let replacementImage = await replacement.value
+        try require(obsoleteImage == nil && replacementImage != nil,
+                    "a cancelled load's late completion cannot remove its same-key replacement")
         let data = try await HistoryMediaLoader.imageData(for: original)
         let otherDirectory = directory.appendingPathComponent("other")
         try FileManager.default.createDirectory(at: otherDirectory, withIntermediateDirectories: true)
@@ -183,4 +224,32 @@ private actor ControlledHistoryRepository: ClipboardRepositoryProtocol {
 private struct NoEffectsWriter: ClipboardWriter {
     func write(_ text: String) async {}
     func write(_ content: ClipboardContent) async {}
+}
+
+/// Holds real repository reads at their asynchronous boundary, without inspecting production IDs.
+private actor GatedThumbnailRepository: HistoryContentRepository {
+    let content: HistoryContentRepository
+    private var gates: [CheckedContinuation<Void, Never>] = []
+    private var released = false
+    private var active = 0
+    private(set) var loads = 0
+    private(set) var peakLoads = 0
+    init(content: HistoryContentRepository) { self.content = content }
+    func loadDetail(itemID: Int64, revision: String) async throws -> ClipboardItem {
+        loads += 1; active += 1; peakLoads = max(peakLoads, active)
+        if !released { await withCheckedContinuation { gates.append($0) } }
+        defer { active -= 1 }
+        return try await content.loadDetail(itemID: itemID, revision: revision)
+    }
+    func releaseAll() {
+        released = true
+        let pending = gates; gates.removeAll()
+        for gate in pending { gate.resume() }
+    }
+    func saveDerived(text: String, source: DocumentSnapshot, requestID: UUID) async throws -> Int64 {
+        try await content.saveDerived(text: text, source: source, requestID: requestID)
+    }
+    func recover(sourceID: Int64) async throws -> DocumentDraft? { try await content.recover(sourceID: sourceID) }
+    func checkpoint(_ draft: DocumentDraft) async throws { try await content.checkpoint(draft) }
+    func discard(sessionID: UUID, generation: Int) async throws { try await content.discard(sessionID: sessionID, generation: generation) }
 }
