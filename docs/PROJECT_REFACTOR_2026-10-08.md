@@ -167,3 +167,11 @@ OCR诊断：只读隔离数据库确认403已识别、405尚无结果，404已�
 第十七批证据：tutorial-lifecycle-stage17.log通过真实原生教程预览→编辑→保存新示例→关闭→分类→隐藏/恢复/关闭，保存回调刷新示例并保留原文，外部写入与粘贴均0；驱动来自产品命令，不冒充物理长按/触控板。build-stage17.log通过；otool确认新的dylib无OpenTracing动态依赖，工程不再引用两项闲置product。最低应用部署15.6、Swift5配置保持；测试target配置不机械同步为产品版本。
 
 交付暂存：out/2026-10-08-project-refactor/delivery/SenseFlow.app由stage17完整构建复制，移除构建目录绝对rpath、本地签名并通过codesign --verify --deep --strict。尚未启动这份包，不能宣称运行验收；旧开发进程34697仍运行，CUA无法取得可操作窗口，未强杀、未覆盖旧应用、未改变真实数据。V仍未完成：正常退出/安全替换与实际主程序交互是最后待办，而非OCR回归（已通过）或依赖构建问题。
+
+第十八批回归修复合同：已正常退出stage9进程并保存完整旧包SenseFlow-before-stage17.app；stage17启动PID39799、dylib SHA256与交付包一致，实际图片筛选与缩略图显示通过。用户报告禁止触控板纵向翻页后鼠标纵向滚轮也失效。现有代码把hasPreciseScrollingDeltas当作触控板身份，导致无手势phase的高精度鼠标滚轮被吞；Apple文档只保证此字段表示delta精度。改为仅消费具有原生gesture/momentum阶段的precise纵向事件，其余纵向滚轮映射横向：像素保留1:1、行单位按24pt。新增真实窗口派发的像素纵向与带phase纵向对照断言，保留既有普通滚轮/横向/回弹验证；构建与focused scroll验证后安全同步。
+
+第十八批追加范围（用户即时指定）：经典/起伏保持设置中的两个独立选项，停止按滚动状态临时启用/回落起伏。起伏始终由鼠标位置与所选模式决定；删除每次滚动重建的waveSettleTask和其影子强度状态，同步设置说明。减少动态任务不作为无测量的性能结论；与滚轮分流合并构建及原生验证。
+
+第十八批证据：build-stage18.log通过。scroll-stage18.log原生NSPanel派发通过普通纵向滚轮72pt、高精度横向17pt、无phase高精度纵向48pt、带phase纵向不移动历史、边缘回弹/末卡可达及分页追加。编译验证发现DocumentWorkflowVerification仍调用已移除CGImage OCR重载，改为实际PNG Data入口并保留空结果/失败断言；这是验证调用点同步，未重建生产旧入口。超大合成80×1600行输入的峰值不作为正常回弹视觉证明。
+
+开发版39799正常Command-Q退出后，保存完整stage17至SenseFlow-before-stage18.app；stage18去绝对构建rpath、签名核验后安装并启动PID40704。CUA实际读出搜索/类别/原历史界面，无新授权请求；后续滚轮动作因用户正在改变应用状态被CUA拒绝，不伪称此物理输入已验收。用户可直接体验目前已启动的修复版，完整重构目标仍保留最终交互/证据审查。

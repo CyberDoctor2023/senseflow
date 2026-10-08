@@ -43,7 +43,7 @@ struct GeneralSettingsView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                Text(cardMotion == .classic ? "保留经典的悬停与按压效果。" : "滚动时鼠标附近的卡片抬高，停止后平滑回落。")
+                Text(cardMotion == .classic ? "保留经典的悬停与按压效果。" : "鼠标附近的卡片抬高，形成平滑的起伏。")
                     .font(.pingFang(.caption))
                     .foregroundStyle(.secondary)
             }

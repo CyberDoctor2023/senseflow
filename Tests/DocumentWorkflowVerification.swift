@@ -393,9 +393,12 @@ import CryptoKit
 
         // OCR regression uses the actual Vision service on a blank image and invalid data.
         let blank = CGContext(data: nil, width: 64, height: 64, bitsPerComponent: 8, bytesPerRow: 256, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-        guard let image = blank?.makeImage() else { throw Failure("blank image creation") }
+        guard let image = blank?.makeImage(),
+              let imageData = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
+            throw Failure("blank image creation")
+        }
         for _ in 0..<4 {
-            let result = await OCRService.shared.recognizeText(from: image)
+            let result = await OCRService.shared.recognizeText(from: imageData)
             try require(result == nil, "OCR empty result returns without continuation crash")
         }
         let invalidOCR = await OCRService.shared.recognizeText(from: Data([0, 1, 2]))
@@ -441,6 +444,24 @@ import CryptoKit
         let preciseDistance = wheelScroll.contentView.bounds.origin.x - preciseBefore
         print("MEASURE precise native wheel movement: \(preciseDistance)pt")
         try require(abs(preciseDistance - 17) < 1, "precise horizontal wheel moves history by pixel distance without line multiplication")
+        guard let pixelWheel = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1,
+                                      wheel1: -48, wheel2: 0, wheel3: 0) else { throw Failure("pixel vertical wheel setup missing") }
+        pixelWheel.location = wheelCG.location
+        guard let pixelEvent = NSEvent(cgEvent: pixelWheel) else { throw Failure("pixel wheel event missing") }
+        try require(pixelEvent.hasPreciseScrollingDeltas && pixelEvent.phase.isEmpty,
+                    "high-resolution wheel delivers precise deltas without a gesture phase")
+        let pixelBefore = wheelScroll.contentView.bounds.origin.x
+        nativeWindow.sendEvent(pixelEvent)
+        try await Task.sleep(nanoseconds: 180_000_000)
+        try require(abs(wheelScroll.contentView.bounds.origin.x - pixelBefore - 48) < 1,
+                    "unphased precise vertical wheel scrolls history horizontally by pixel distance")
+        pixelWheel.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(CGScrollPhase.began.rawValue))
+        guard let gestureEvent = NSEvent(cgEvent: pixelWheel) else { throw Failure("vertical gesture event missing") }
+        let gestureBefore = wheelScroll.contentView.bounds.origin.x
+        nativeWindow.sendEvent(gestureEvent)
+        try await Task.sleep(nanoseconds: 180_000_000)
+        try require(abs(wheelScroll.contentView.bounds.origin.x - gestureBefore) < 1,
+                    "phased precise vertical gesture cannot navigate history horizontally")
         // Exercise the same window route through the actual trailing boundary, including release.
         var greatestStretch: CGFloat = 0
         for _ in 0..<80 {

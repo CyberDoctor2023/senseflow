@@ -36,8 +36,6 @@ struct ClipboardListView: View {
     @State private var userIsScrolling = false
     @State private var tutorialViewportWidth: CGFloat = 0
     @State private var pointerX: CGFloat?
-    @State private var waveStrength: CGFloat = 0
-    @State private var waveSettleTask: Task<Void, Never>?
     @AppStorage(HistoryCardMotion.preferenceKey) private var cardMotion = HistoryCardMotion.wave
     @Environment(\.clipboardOnboarding) private var onboarding
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -99,7 +97,7 @@ struct ClipboardListView: View {
                         LazyHStack(alignment: .bottom, spacing: cardConfig.cardSpacing) {
                             ForEach(viewModel.items) { item in
                                 ClipboardCardView(item: item, actions: viewModel.actions, thumbnails: viewModel.thumbnails)
-                                    .modifier(HistoryPointerWave(pointerX: pointerX, strength: waveStrength,
+                                    .modifier(HistoryPointerWave(pointerX: pointerX, strength: cardMotion == .wave ? 1 : 0,
                                         reduceMotion: reduceMotion || cardMotion == .classic))
                                     .id(item.id)
                                     .anchorPreference(key: OnboardingAnchors.self, value: .bounds) { anchor in
@@ -147,14 +145,12 @@ struct ClipboardListView: View {
                     .background(HorizontalWheelRegion(
                         onScroll: {
                             userIsScrolling = true
-                            registerScrollActivity()
                             viewModel.actions.documents.historyScrolled()
                         }
                     ))
                     .onScrollPhaseChange { _, phase in
                         userIsScrolling = phase != .idle && phase != .animating
                         if phase != .idle {
-                            registerScrollActivity()
                             viewModel.actions.documents.historyScrolled()
                         }
                     }
@@ -177,23 +173,11 @@ struct ClipboardListView: View {
         }
         .quickLookPreview($actions.quickLookURL)
         .contentShape(Rectangle())
-        .onDisappear { waveSettleTask?.cancel(); waveStrength = 0 }
         .task {
             if loadOnAppear { await viewModel.loadItems() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .clipboardDidUpdate)) { _ in
             if observesUpdates { viewModel.historyDidChange() }
-        }
-    }
-
-    private func registerScrollActivity() {
-        waveSettleTask?.cancel()
-        withAnimation(.easeOut(duration: reduceMotion ? 0 : 0.18)) { waveStrength = 1 }
-        waveSettleTask = Task { @MainActor in
-            do {
-                try await Task.sleep(for: .milliseconds(220))
-                withAnimation(.easeInOut(duration: reduceMotion ? 0 : 0.3)) { waveStrength = 0 }
-            } catch { /* A new wheel or trackpad event extends the wave. */ }
         }
     }
 
@@ -248,9 +232,10 @@ struct HorizontalWheelRegion: NSViewRepresentable {
             }
             guard isEnabled else { return true }
             let vertical = abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX)
-            // Precise vertical input belongs to the trackpad's reveal/dismiss gesture,
-            // not horizontal history navigation. Consume it before AppKit can adapt it.
-            if vertical && event.hasPreciseScrollingDeltas {
+            // Precision describes units, not the input device. High-resolution wheels
+            // can deliver pixel deltas without the phases of a trackpad gesture.
+            let phasedGesture = !event.phase.isEmpty || !event.momentumPhase.isEmpty
+            if vertical && event.hasPreciseScrollingDeltas && phasedGesture {
                 finishWheelGesture()
                 lastMouseWheelDelta = 0
                 return true

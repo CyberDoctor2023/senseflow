@@ -602,3 +602,5 @@ Apple Doc MCP核对withAnimation(_:completionCriteria:_:completion:)在所有动
 2026-10-08捕获设置闪退：Apple Doc MCP读取NSMetadataQuery.predicate，入口https://developer.apple.com/documentation/foundation/nsmetadataquery/predicate 。接口概述不足以保证Foundation任意compound都适合Spotlight。隔离真实启动查询复现“NSOrPredicateType NSCompoundPredicate with wrong number (1) of subpredicates”；单类别直接predicate、双类别OR，全部类别/日期边界组合通过实际query.start验证。证据见out/2026-10-08-project-refactor/predicate-start-date.log与risk-stage7.log；不是用fixture模拟外部API。
 
 - 2026-10-08 OCR：Apple Doc MCP `RecognizeTextRequest`：macOS15起支持Swift异步图片Data识别；工程部署15.6可直接采用，无需旧VN并行路径。官方入口：https://developer.apple.com/documentation/vision/recognizetextrequest 。独立连续同原件实验见 `out/2026-10-08-project-refactor/vision-modern-stage16.log`；实验不代替产品回归。
+
+- 2026-10-08 滚轮分流：Apple Doc MCP `NSEvent/hasPreciseScrollingDeltas`只描述delta精度，不能单独当作硬件身份。https://developer.apple.com/documentation/appkit/nsevent/hasprecisescrollingdeltas 。phase MCP路径404，官方入口 https://developer.apple.com/documentation/appkit/nsevent/phase 。高精度无phase鼠标事件与带phase的纵向手势通过真实NSPanel事件派发分别验证。
