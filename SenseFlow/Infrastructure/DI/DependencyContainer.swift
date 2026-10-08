@@ -43,7 +43,7 @@ import Foundation
 /// let container = DependencyContainer()
 /// let coordinator = container.promptToolCoordinator  // 自动创建所有依赖
 /// ```
-final class DependencyContainer {
+@MainActor final class DependencyContainer {
 
     // MARK: - Singletons (Infrastructure Layer - 基础设施层)
     //

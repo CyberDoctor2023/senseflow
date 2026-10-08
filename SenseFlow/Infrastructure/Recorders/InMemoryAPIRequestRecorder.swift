@@ -4,29 +4,6 @@
 //
 //  Created on 2026-02-26.
 //
-//  【架构说明 - Infrastructure Adapter】
-//  这是 APIRequestRecorder 的内存实现（Adapter）
-//
-//  职责：
-//  - 在内存中存储 API 请求记录
-//  - 提供线程安全的访问
-//  - 支持 SwiftUI 响应式更新
-//
-//  设计模式：
-//  - Adapter Pattern：将内存存储适配到 APIRequestRecorder 接口
-//  - Singleton Pattern：全局单例，便于访问
-//  - Observer Pattern：通过 @Published 支持响应式
-//
-//  为什么用内存存储？
-//  - 简单：无需数据库或文件 I/O
-//  - 快速：读写性能最优
-//  - 适合调试：重启清空，不会积累垃圾数据
-//
-//  未来扩展：
-//  - 可以添加 DatabaseAPIRequestRecorder 实现持久化
-//  - 可以添加 FileAPIRequestRecorder 导出到文件
-//  - 可以使用 CompositeRecorder 同时记录到多个地方
-//
 
 import Foundation
 import Combine

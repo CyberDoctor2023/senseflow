@@ -95,3 +95,17 @@ OCR积压改为一个后台消费者，SQLite原件作为工作来源，仅保�
 桌面本轮已解锁，document-stage7.log全部原生断言通过，capture-stage7-full.log包括Quick Look通过。另发现运行旧开发版PID65990在12:50真实闪退：切换系统捕获设置时NSMetadataQuery拒绝单子项OR。独立启动查询复现NSInvalidArgumentException；仅设置predicate而不start不足以验证。将单类别直接用比较predicate，仅两类别组合OR；验证类别和是否导入旧记录的全部组合。此前运行版不替换，先修复此真实崩溃。
 
 第七批证据：build-stage7-crash-fix.log构建通过；risk-stage7.log全部风险验证通过，包括6种启用类别/日期组合实际Spotlight启动、2种全部关闭不启动。捕获存储及Quick Look回归通过；文档完整原生流程通过（包括此前失败的另卡片按压）。文档同进程Debug暖启动对比与135万UTF16长文打开数据归档至document-metrics-stage7.json，截图document-preview-stage7.png；不宣称该数据是首次长按或Release p95。极端1600行合成滚轮峰值不是正常用户输入的视觉验收，保留待实际体验核对。
+
+## 第八批测量合同
+
+使用同一模块和隔离原件集合，将2115ab8中未限并发的缩略图加载器作为只存在于测量资产的基线，与当前加载器分别进程执行实际ImageIO读取/解码；记录wall time和进程峰值RSS。文件仓库不注入等待，不将模拟SQL或Mock延时作为性能证据。结果只说明此组件突发负载，不代表整机滚动帧率或首次长按延迟。随后核对UI、构建、数据安全、架构与交付证据缺口。
+
+第八批缩略图实测：16张不同2400×1600 TIFF原件，360px缩略图，同一设备/模块/无优化编译，独立进程按before-after-after-before顺序，均checksum=1382400。峰值RSS旧288653312/288079872 bytes，新62521344/62603264 bytes（约275→60 MiB）。暖缓存整批旧43.193ms，新70.397/73.054ms；旧首次272.891ms受冷缓存影响，不用该值宣称新实现更快。并发限制换取突发内存降低，完整整批暖吞吐有所下降，不能声称全应用帧率提升。原始源码、源图、日志与结构化数据保存在out/2026-10-08-project-refactor/（BenchmarkThumbnails.swift、LegacyClipboardThumbnailLoader.swift、thumbnail-metrics.json）。
+
+OCR测量使用55eb73c数据库代码（仅将BlobFileManager目录注入为隔离目录，不改OCR调度）、当前生产Vision与数据库代码，同一批16张真实文字TIFF，均全部识别。独立进程顺序before-after-after-before：RSS旧374423552/398262272 bytes，新181485568/173277184 bytes。暖启动旧1.783s，新1.694/1.916s；首次旧19.470s为离群启动样本，不归因为调度改进。原件入库耗时旧0.493/0.344s，新0.249/0.389s，样本不足以宣称普遍提速。证据源BenchmarkOCR.swift、LegacyDatabaseManager.swift及扩展、ocr-*.log。未接触生产数据库与原件目录。
+
+## 第九批实施合同
+
+组合层三个所有者（DependencyContainer、DependencyEnvironment、AppDependencies）明确MainActor，lazy依赖和启动单例由同一UI线程初始化与读取；现有调用入口仅SwiftUI/AppDelegate/异步快捷键协调器。可观察请求记录协议属于UI主线程，异步记录协议保持可跨执行器调用。不将数据库或原生适配器随意标成unchecked Sendable，不机械迁移整个项目到Swift 6。验证构建和实际启动初始化；删除记录器已过时的教学/未来扩展注释。
+
+第九批证据：build-stage9.log构建通过，组合层与可观察记录协议相关隔离告警消失。既有数据库/原生适配器的Sendable诊断仍需按真实所有权审查，未用unchecked Sendable消音。此次提交保留测量原始数据与诚实的吞吐限制；运行版替换、实际启动与引导全流程仍为剩余验收，整体目标不标完成。

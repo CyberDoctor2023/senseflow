@@ -26,7 +26,7 @@ import SwiftUI
 ///     }
 /// }
 /// ```
-final class DependencyEnvironment: ObservableObject {
+@MainActor final class DependencyEnvironment: ObservableObject {
 
     /// 内部依赖容器
     let container: DependencyContainer
