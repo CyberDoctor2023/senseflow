@@ -14,10 +14,10 @@
 
 - [x] G0：本地Git源码基线。无原有仓库，无配置提交身份，使用明确Codex本地作者，不改全局配置。
 - [x] R1：审查生产职责/重复实现，记录实际风险与有界实施清单。
-- [ ] R2：历史列表筛选计算与加载/刷新生命周期；捕获导入并发与批量更新边界。
-- [ ] R3：媒体内容准备共用接口；窗口手势与进度监听、教程示例仓库解耦。
+- [x] R2：历史列表筛选计算与加载/刷新生命周期；捕获导入并发与批量更新边界（risk-stage16、capture-stage7-full及下文生产职责地图）。
+- [x] R3：媒体内容准备共用接口；窗口手势与进度监听、教程示例仓库解耦（document-stage7、tutorial-lifecycle-stage17及下文职责地图）。
 - [x] R4a：归档35个历史一次性工程脚本，保留路径映射与内容；未删除风险验证。
-- [ ] R4b：后续生产配置与依赖审计。
+- [x] R4b：后续生产配置与依赖审计（第九、十一、十二、十七批；保留明确记录的Swift5隔离诊断）。
 - [ ] V：构建及实际行为/性能验证，修复回归，最终审查提交。
 
 ## 验证计划
@@ -159,3 +159,11 @@ OCR诊断：只读隔离数据库确认403已识别、405尚无结果，404已�
 第十六批实施合同：独立autoreleasepool实验仍第二张e5rtError；改用macOS15起的Swift RecognizeTextRequest对相同两张原件连续请求成功（14.803s、1.251s，各1个结果，vision-modern-stage16.log）。官方Apple Doc MCP确认其支持Data异步perform，工程最低macOS15.6满足可用性。替换旧VN请求及手动ImageIO转换，不保留双路径/fallback；语言、精度、取消检查、单消费者与隐私安全错误日志保持。完成条件为构建及原有OCR删除竞争完整风险验证通过，而不是仅独立实验通过。
 
 第十六批证据：build-stage16.log构建通过；risk-stage16.log整套风险验证通过，含连续OCR跨删除、被删除记录不复活、Spotlight实际启动组合、工具并发、分页/刷新竞争、缓存取消与两库原件隔离。新Swift请求替换后本轮回归成立；不由此宣称所有设备的系统引擎问题已根治。运行开发版仍为stage9，尚需安全同步及最终原生交互证据核对。
+
+第十七批验证合同：运行stage9进程34697仍在，但CUA绑定、快捷键均报noWindowsAvailable，不能据此安全正常退出；本批不强杀或覆盖其可执行文件。扩展既有原生教程生命周期验证，串起真实示例模型、延迟左右引导、原生预览/编辑/保存与分类，不新增生产专用开关。隔离writer与UserDefaults不变，验证事件来源明确区分产品命令和真实物理输入；剩余运行版本同步仍单独记录。
+
+第十七批依赖合同：实际TracingService只使用HTTP exporter/API/SDK；全生产及Tests没有gRPC exporter和OpenTracing shim调用。当前解析的官方包manifest确认HTTP target独立，不依赖这两个product。移除工程直接链接的OpenTelemetryProtocolExporter（gRPC）及OpenTracingShim-experimental，保留实际HTTP跟踪和其传递依赖。完成条件是工程一致性、合并构建和可执行依赖核对；不宣称仅凭少两个product就得到运行帧率提升。现有三个非Sendable持有诊断属于已知Swift5边界，未用unchecked Sendable消音，不将本轮扩为全工程Swift6迁移。
+
+第十七批证据：tutorial-lifecycle-stage17.log通过真实原生教程预览→编辑→保存新示例→关闭→分类→隐藏/恢复/关闭，保存回调刷新示例并保留原文，外部写入与粘贴均0；驱动来自产品命令，不冒充物理长按/触控板。build-stage17.log通过；otool确认新的dylib无OpenTracing动态依赖，工程不再引用两项闲置product。最低应用部署15.6、Swift5配置保持；测试target配置不机械同步为产品版本。
+
+交付暂存：out/2026-10-08-project-refactor/delivery/SenseFlow.app由stage17完整构建复制，移除构建目录绝对rpath、本地签名并通过codesign --verify --deep --strict。尚未启动这份包，不能宣称运行验收；旧开发进程34697仍运行，CUA无法取得可操作窗口，未强杀、未覆盖旧应用、未改变真实数据。V仍未完成：正常退出/安全替换与实际主程序交互是最后待办，而非OCR回归（已通过）或依赖构建问题。

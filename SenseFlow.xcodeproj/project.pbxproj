@@ -10,9 +10,7 @@
 		E8F100010000000000000001 /* TrackpadRevealMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F100020000000000000001 /* TrackpadRevealMonitor.swift */; };
 		B71007010000000000000001 /* onboarding-promotion.png in Resources */ = {isa = PBXBuildFile; fileRef = B71007010000000000000002 /* onboarding-promotion.png */; };
 		049B4FDC2F286C6400DB81C4 /* GoogleGenerativeAI in Frameworks */ = {isa = PBXBuildFile; productRef = BB9657CA59FA72893CD28153 /* GoogleGenerativeAI */; };
-		049B4FDF2F286E9000DB81C4 /* OpenTelemetryProtocolExporter in Frameworks */ = {isa = PBXBuildFile; productRef = 049B4FDE2F286E9000DB81C4 /* OpenTelemetryProtocolExporter */; };
 		049B4FE12F286E9000DB81C4 /* OpenTelemetryProtocolExporterHTTP in Frameworks */ = {isa = PBXBuildFile; productRef = 049B4FE02F286E9000DB81C4 /* OpenTelemetryProtocolExporterHTTP */; };
-		049B4FE32F286E9000DB81C4 /* OpenTracingShim-experimental in Frameworks */ = {isa = PBXBuildFile; productRef = 049B4FE22F286E9000DB81C4 /* OpenTracingShim-experimental */; };
 		04BC7F422F189BF8006978CE /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = 04BC7F412F189BF8006978CE /* SQLite */; };
 		04BC7F462F18A84E006978CE /* ClipboardItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04BC7F452F18A84E006978CE /* ClipboardItem.swift */; };
 		04BC7F4A2F18A9C0006978CE /* DatabaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04BC7F492F18A9C0006978CE /* DatabaseManager.swift */; };
@@ -352,9 +350,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				049B4FE32F286E9000DB81C4 /* OpenTracingShim-experimental in Frameworks */,
 				049B4FDC2F286C6400DB81C4 /* GoogleGenerativeAI in Frameworks */,
-				049B4FDF2F286E9000DB81C4 /* OpenTelemetryProtocolExporter in Frameworks */,
 				049B4FE12F286E9000DB81C4 /* OpenTelemetryProtocolExporterHTTP in Frameworks */,
 				04BC7F422F189BF8006978CE /* SQLite in Frameworks */,
 				05BC7F432F189BF9006978CE /* OpenAI in Frameworks */,
@@ -951,9 +947,7 @@
 				04BC7F412F189BF8006978CE /* SQLite */,
 				05BC7F422F189BF9006978CE /* OpenAI */,
 				BB9657CA59FA72893CD28153 /* GoogleGenerativeAI */,
-				049B4FDE2F286E9000DB81C4 /* OpenTelemetryProtocolExporter */,
 				049B4FE02F286E9000DB81C4 /* OpenTelemetryProtocolExporterHTTP */,
-				049B4FE22F286E9000DB81C4 /* OpenTracingShim-experimental */,
 				F1A0B1C2D3E4F5A6B7C8D9E1 /* KeyboardShortcuts */,
 			);
 			productName = SenseFlow;
@@ -1513,20 +1507,10 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		049B4FDE2F286E9000DB81C4 /* OpenTelemetryProtocolExporter */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 049B4FDD2F286E9000DB81C4 /* XCRemoteSwiftPackageReference "opentelemetry-swift" */;
-			productName = OpenTelemetryProtocolExporter;
-		};
 		049B4FE02F286E9000DB81C4 /* OpenTelemetryProtocolExporterHTTP */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 049B4FDD2F286E9000DB81C4 /* XCRemoteSwiftPackageReference "opentelemetry-swift" */;
 			productName = OpenTelemetryProtocolExporterHTTP;
-		};
-		049B4FE22F286E9000DB81C4 /* OpenTracingShim-experimental */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 049B4FDD2F286E9000DB81C4 /* XCRemoteSwiftPackageReference "opentelemetry-swift" */;
-			productName = "OpenTracingShim-experimental";
 		};
 		04BC7F412F189BF8006978CE /* SQLite */ = {
 			isa = XCSwiftPackageProductDependency;
