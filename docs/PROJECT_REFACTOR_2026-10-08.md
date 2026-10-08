@@ -139,3 +139,5 @@ OCR测量使用55eb73c数据库代码（仅将BlobFileManager目录注入为隔�
 | AI身份/生成/诊断 | CodexAuthManager / AIService actor / InMemoryAPIRequestRecorder | 请求局部client；诊断数量和字节有界 |
 
 工程成员已确认媒体、捕获、示例仓库及文档存储均在Sources。旧捕获目录bookmark仍由现有授权恢复路径使用，保留以免撤销已有访问；没有重新引入文件夹选择界面。SQLitePromptToolRepository末尾教学内容不属于运行合同；RepositoryError.notFound全项目无调用，删除这两项。剩余重点是原生交互体验证据、运行版同步和真实Sendable所有权诊断，不扩大为全项目Swift 6迁移。
+
+第十一批：build-stage11.log合并构建通过。调用检索显示CarbonHotKeyAdapter与GlobalHotKeyAdapter均无构造者，前者不在target、后者仍编译且产生Sendable诊断；实际PromptToolCoordinator使用AppHotKeyCoordinator的PromptToolHotKeyHandling。删除两份重复适配器，HotKeyError保留在实际快捷键所有者文件，同步PBX引用。旧RegisterToolHotKey协议/用例尚有历史测试引用，本批不连带删除其断言或声称真实快捷键体验通过。

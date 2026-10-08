@@ -67,7 +67,6 @@
 		6C259D065E65FF964CD409BD /* WindowLayoutConfigurable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3302F505C634C0CAC997F737 /* WindowLayoutConfigurable.swift */; };
 		6DD40B768ABE8F0CE785825A /* NSPasteboardAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B80603119B3471FE8BBD4C7 /* NSPasteboardAdapter.swift */; };
 		6DF91AF64B32E157B3CDC34C /* AppDependencies.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD279DD5E5F854CB0FC69E9B /* AppDependencies.swift */; };
-		6E2494306C97D3CBA3AF9E27 /* GlobalHotKeyAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6A18CAA86DEEB439471454C /* GlobalHotKeyAdapter.swift */; };
 		705CAB78876453BA631531DB /* RealAITransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A85FE12D511B46D178074C8D /* RealAITransport.swift */; };
 		70BF8F2B21963646CFC5713F /* PromptToolRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FB9C3A0B473184F5E654314 /* PromptToolRepository.swift */; };
 		72C81DD179A339C5285BAF72 /* MockPromptToolRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1E475EE0ACB725239D1CFFD /* MockPromptToolRepository.swift */; };
@@ -312,7 +311,6 @@
 		C1F4EE5C341709452B52DD83 /* LangfusePromptService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LangfusePromptService.swift; sourceTree = "<group>"; };
 		C467591CE6808369CF85D61E /* ClipboardItemColors.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ClipboardItemColors.swift; sourceTree = "<group>"; };
 		C5B4E277EC03DB9E4E060E2A /* ExecutePromptTool.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExecutePromptTool.swift; path = SenseFlow/UseCases/PromptTool/ExecutePromptTool.swift; sourceTree = "<group>"; };
-		C6A18CAA86DEEB439471454C /* GlobalHotKeyAdapter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GlobalHotKeyAdapter.swift; path = SenseFlow/Adapters/Services/GlobalHotKeyAdapter.swift; sourceTree = "<group>"; };
 		C7962AD64992E9EE55DBB6B1 /* SearchBarConfigurable.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SearchBarConfigurable.swift; path = Protocols/SearchBarConfigurable.swift; sourceTree = "<group>"; };
 		CAF99B028FA348D4ED902B97 /* WindowConfigurator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WindowConfigurator.swift; sourceTree = "<group>"; };
 		CCE06BC6F99B82887F150112 /* DependencyContainer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DependencyContainer.swift; path = SenseFlow/Infrastructure/DI/DependencyContainer.swift; sourceTree = "<group>"; };
@@ -858,7 +856,6 @@
 				479A365EF731B4B99268B8AE /* UserAPISettingsServiceAdapter.swift */,
 				5B80603119B3471FE8BBD4C7 /* NSPasteboardAdapter.swift */,
 				EDDBE74FB1993495C7B69AD5 /* UserNotificationAdapter.swift */,
-				C6A18CAA86DEEB439471454C /* GlobalHotKeyAdapter.swift */,
 				BACC524ABDC4EC093A260A02 /* SystemContextCollector.swift */,
 				C1A0A100A100A100A100A402 /* SystemContextScreenshotCollector.swift */,
 				C1A0A100A100A100A100A602 /* AXCaretLocator.swift */,
@@ -1137,7 +1134,6 @@
 				5B3F27B1DFBC1543AE6665AB /* UserAPISettingsServiceAdapter.swift in Sources */,
 				6DD40B768ABE8F0CE785825A /* NSPasteboardAdapter.swift in Sources */,
 				2E64CD200E867AB21B7F8219 /* UserNotificationAdapter.swift in Sources */,
-				6E2494306C97D3CBA3AF9E27 /* GlobalHotKeyAdapter.swift in Sources */,
 				103E723B27EDE841CDF5EBB0 /* SystemContextCollector.swift in Sources */,
 				C1A0A100A100A100A100A401 /* SystemContextScreenshotCollector.swift in Sources */,
 				C1A0A100A100A100A100A601 /* AXCaretLocator.swift in Sources */,
