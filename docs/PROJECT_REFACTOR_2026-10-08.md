@@ -175,3 +175,9 @@ OCR诊断：只读隔离数据库确认403已识别、405尚无结果，404已�
 第十八批证据：build-stage18.log通过。scroll-stage18.log原生NSPanel派发通过普通纵向滚轮72pt、高精度横向17pt、无phase高精度纵向48pt、带phase纵向不移动历史、边缘回弹/末卡可达及分页追加。编译验证发现DocumentWorkflowVerification仍调用已移除CGImage OCR重载，改为实际PNG Data入口并保留空结果/失败断言；这是验证调用点同步，未重建生产旧入口。超大合成80×1600行输入的峰值不作为正常回弹视觉证明。
 
 开发版39799正常Command-Q退出后，保存完整stage17至SenseFlow-before-stage18.app；stage18去绝对构建rpath、签名核验后安装并启动PID40704。CUA实际读出搜索/类别/原历史界面，无新授权请求；后续滚轮动作因用户正在改变应用状态被CUA拒绝，不伪称此物理输入已验收。用户可直接体验目前已启动的修复版，完整重构目标仍保留最终交互/证据审查。
+
+第十九批诊断合同：用户实机仍不能滚动，stage18合成派发不足以覆盖实际输入；不宣布已修复。完整文档验证document-stage18-full.log在关闭后再次预览超时（178行），未通过且保留断言，可能受实际焦点/原生事件影响，尚无根因证据。为实际Debug窗口增加最多40次不含内容/路径的滚轮诊断，记录window派发、路由命中、delta/phase与offset，替换版后采集用户滚轮事件；定位后删除临时诊断，不靠增加无证据fallback覆盖问题。
+
+第十九批实机证据：wheel-input-stage19.log在PID41430真实窗口记录Route hit=true、enabled=true、associated=true、router=true，用户滚轮含precise=true/phase=4，纵向delta持续13–19；因此stage18用phase判断设备仍会吞掉这条输入。CUA固定窗口后的普通scroll能使卡片移动，只证明其事件链正常，不能代表用户事件。利用已有选定触控板的双指接触信号区分真实触控板，保持纵向触控板惯性所属手势到结束；鼠标即便携带phase也正常映射。物理传感器不引入新权限/事件拦截；验证通过注入接触状态对照同一个phased事件，随后删除临时日志。
+
+第十九批最终证据：build-stage19-final.log与scroll-stage19.log通过。相同phased precise事件在无物理接触时移动48pt，有双指接触时不移动，双指抬起后的纵向惯性仍不翻页；普通/高精度横向、回弹、末卡和分页均通过。传感器已有锁内只存Bool，停止/重新配置清空；无逐帧Task。临时Debug诊断代码全部删除，日志流正常停止。正常退出诊断版后保存完整旧包至SenseFlow-before-stage19-final.app，新版PID41916启动，CUA实际加载原历史和类别界面；还未获得用户此次实机滚轮确认，不把此前失败反馈抹掉。文档再次打开超时仍为独立待查项，整体目标不标完成。

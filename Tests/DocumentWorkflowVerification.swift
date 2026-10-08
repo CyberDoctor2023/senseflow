@@ -457,11 +457,28 @@ import CryptoKit
                     "unphased precise vertical wheel scrolls history horizontally by pixel distance")
         pixelWheel.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(CGScrollPhase.began.rawValue))
         guard let gestureEvent = NSEvent(cgEvent: pixelWheel) else { throw Failure("vertical gesture event missing") }
+        wheelRegion.trackpadContactsPresent = { false }
+        let smoothMouseBefore = wheelScroll.contentView.bounds.origin.x
+        nativeWindow.sendEvent(gestureEvent)
+        try await Task.sleep(nanoseconds: 180_000_000)
+        try require(abs(wheelScroll.contentView.bounds.origin.x - smoothMouseBefore - 48) < 1,
+                    "phased precise mouse wheel still scrolls without physical trackpad contacts")
+        wheelRegion.trackpadContactsPresent = { true }
         let gestureBefore = wheelScroll.contentView.bounds.origin.x
         nativeWindow.sendEvent(gestureEvent)
         try await Task.sleep(nanoseconds: 180_000_000)
         try require(abs(wheelScroll.contentView.bounds.origin.x - gestureBefore) < 1,
-                    "phased precise vertical gesture cannot navigate history horizontally")
+                    "physical two-finger vertical gesture cannot navigate history horizontally")
+        wheelRegion.trackpadContactsPresent = { false }
+        pixelWheel.setIntegerValueField(.scrollWheelEventScrollPhase, value: 0)
+        pixelWheel.setIntegerValueField(.scrollWheelEventMomentumPhase, value: 2)
+        guard let touchMomentum = NSEvent(cgEvent: pixelWheel) else { throw Failure("touch momentum event missing") }
+        nativeWindow.sendEvent(touchMomentum)
+        try await Task.sleep(nanoseconds: 180_000_000)
+        try require(abs(wheelScroll.contentView.bounds.origin.x - gestureBefore) < 1,
+                    "trackpad vertical momentum remains excluded after fingers lift")
+        pixelWheel.setIntegerValueField(.scrollWheelEventMomentumPhase, value: 3)
+        if let endMomentum = NSEvent(cgEvent: pixelWheel) { nativeWindow.sendEvent(endMomentum) }
         // Exercise the same window route through the actual trailing boundary, including release.
         var greatestStretch: CGFloat = 0
         for _ in 0..<80 {

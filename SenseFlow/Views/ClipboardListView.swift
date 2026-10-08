@@ -207,6 +207,8 @@ struct HorizontalWheelRegion: NSViewRepresentable {
         private weak var gestureScroll: NSScrollView?
         private var wheelEndTimer: Timer?
         private var lastMouseWheelDelta: CGFloat = 0
+        var trackpadContactsPresent: () -> Bool = { TrackpadRevealMonitor.shared.hasScrollingContacts }
+        private var consumingVerticalTouchGesture = false
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
@@ -218,6 +220,7 @@ struct HorizontalWheelRegion: NSViewRepresentable {
         func unregister() {
             finishWheelGesture()
             lastMouseWheelDelta = 0
+            consumingVerticalTouchGesture = false
             if registeredPanel?.historyWheelRouter === self { registeredPanel?.historyWheelRouter = nil }
             registeredPanel = nil
         }
@@ -232,10 +235,16 @@ struct HorizontalWheelRegion: NSViewRepresentable {
             }
             guard isEnabled else { return true }
             let vertical = abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX)
-            // Precision describes units, not the input device. High-resolution wheels
-            // can deliver pixel deltas without the phases of a trackpad gesture.
+            // Mouse smoothing can provide gesture phases too. Only actual trackpad
+            // contacts start a vertical touch gesture; its momentum keeps that owner.
             let phasedGesture = !event.phase.isEmpty || !event.momentumPhase.isEmpty
-            if vertical && event.hasPreciseScrollingDeltas && phasedGesture {
+            let touchingTrackpad = trackpadContactsPresent()
+            if event.phase.contains(.began) || !phasedGesture { consumingVerticalTouchGesture = false }
+            if vertical && touchingTrackpad { consumingVerticalTouchGesture = true }
+            let consumesTouch = vertical && event.hasPreciseScrollingDeltas && consumingVerticalTouchGesture
+            if event.momentumPhase.contains(.ended) || event.momentumPhase.contains(.cancelled)
+                || event.phase.contains(.cancelled) { consumingVerticalTouchGesture = false }
+            if consumesTouch {
                 finishWheelGesture()
                 lastMouseWheelDelta = 0
                 return true

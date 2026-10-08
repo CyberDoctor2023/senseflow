@@ -80,14 +80,22 @@ private final class RevealContactReceiver: @unchecked Sendable {
     private let lock = NSLock()
     private var recognizer = TrackpadRevealRecognizer()
     private var action: (@Sendable (TrackpadEdgeAction) -> Void)?
+    private var scrollingContacts = false
+    var hasScrollingContacts: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return scrollingContacts
+    }
     func configure(action: (@Sendable (TrackpadEdgeAction) -> Void)?) {
         lock.lock()
         self.action = action
         recognizer.reset()
+        scrollingContacts = false
         lock.unlock()
     }
     func receive(_ contacts: [RevealContact], time: Double) {
         lock.lock()
+        scrollingContacts = action != nil && contacts.count >= 2
         let result = action != nil ? recognizer.consume(contacts, time: time) : nil
         let callback = action
         lock.unlock()
@@ -119,6 +127,8 @@ private let revealFrameCallback: @convention(c) (UnsafeMutableRawPointer?, Unsaf
     static let shared = TrackpadRevealMonitor()
     enum Status: String { case stopped, unavailable, noDevice, failed, listening }
     private(set) var status: Status = .stopped
+    /// Reads the selected physical trackpad's current two-finger contact state.
+    var hasScrollingContacts: Bool { status == .listening && RevealContactReceiver.shared.hasScrollingContacts }
     private let logger = Logger(subsystem: "com.senseflow.SenseFlow", category: "TrackpadReveal")
     private typealias Device = UnsafeMutableRawPointer
     private typealias Callback = @convention(c) (Device?, UnsafeMutableRawPointer?, Int32, Double, Int32) -> Void
