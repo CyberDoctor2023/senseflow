@@ -21,7 +21,10 @@ class BlobFileManager {
 
     // MARK: - Initialization
 
-    private init() {}
+    private let directory: URL?
+
+    /// An explicit directory keeps alternate databases and their originals isolated.
+    init(directory: URL? = nil) { self.directory = directory }
 
     // MARK: - Public Methods
 
@@ -71,6 +74,10 @@ class BlobFileManager {
     /// 获取 blobs 目录
     private func getBlobsDirectory() throws -> URL {
         let fileManager = FileManager.default
+        if let directory {
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            return directory
+        }
         let appSupportURL = try fileManager.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,

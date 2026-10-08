@@ -75,6 +75,55 @@ import AppKit
         await read.value
         try require(refreshed.items.first?.id == 4 && !refreshed.isLoading,
                     "writes during an in-flight snapshot coalesce into a latest read")
+        var imageIDs: [Int64] = []
+        for index in 0..<3 {
+            let image = NSImage(size: NSSize(width: 1200, height: 400))
+            image.lockFocus()
+            NSColor.white.setFill()
+            NSBezierPath(rect: NSRect(x: 0, y: 0, width: 1200, height: 400)).fill()
+            ("History recognition \(index)" as NSString).draw(at: NSPoint(x: 60, y: 170), withAttributes: [
+                .font: NSFont.systemFont(ofSize: 64), .foregroundColor: NSColor.black
+            ])
+            image.unlockFocus()
+            guard let data = image.tiffRepresentation else { throw Failure("image preparation failed") }
+            try await store.performStoreOperation {
+                guard store.insertItem(.init(type: .image, imageData: data, appName: "isolated")) else {
+                    throw Failure("image insert failed")
+                }
+            }
+            let latest = try await store.fetchRecentItemsAsync(limit: 1)
+            guard let id = latest.first?.id else { throw Failure("image row missing") }
+            imageIDs.append(id)
+        }
+        let removed = imageIDs[1]
+        store.deleteItem(id: removed)
+        let deadline = Date().addingTimeInterval(60)
+        var recognized = false
+        repeat {
+            let rows = try await store.fetchRecentItemsAsync(limit: 10)
+            let details = try await store.performStoreOperation {
+                try rows.filter { imageIDs.contains($0.id) }.map { try store.loadHistoryDetail(itemID: $0.id, revision: $0.uniqueId) }
+            }
+            recognized = imageIDs.filter { $0 != removed }.allSatisfy { id in
+                details.contains { $0.id == id && $0.ocrText?.contains("History") == true }
+            }
+            if recognized { break }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        } while Date() < deadline
+        try require(recognized, "one OCR consumer recognizes queued external originals across a deletion")
+        let remaining = try await store.fetchRecentItemsAsync(limit: 10)
+        try require(!remaining.contains { $0.id == removed }, "late recognition cannot recreate a deleted image")
+        guard let summary = remaining.first(where: { imageIDs.contains($0.id) }) else { throw Failure("recognized image missing") }
+        let original = try await store.performStoreOperation { try store.loadHistoryDetail(itemID: summary.id, revision: summary.uniqueId) }
+        let data = try await HistoryMediaLoader.imageData(for: original)
+        let otherDirectory = directory.appendingPathComponent("other")
+        try FileManager.default.createDirectory(at: otherDirectory, withIntermediateDirectories: true)
+        let otherStore = DatabaseManager(databaseURL: otherDirectory.appendingPathComponent("history.sqlite"))
+        _ = try await otherStore.performStoreOperation { otherStore.insertItem(.init(type: .image, imageData: data, appName: "isolated")) }
+        let otherRows = try await otherStore.fetchRecentItemsAsync(limit: 1)
+        guard let other = otherRows.first, let otherPath = other.blobPath else { throw Failure("second store original missing") }
+        store.clearAllItems()
+        try require(FileManager.default.fileExists(atPath: otherPath), "clearing one database preserves another database's identical original")
         print("PASS refactor risk verification; no user history, credentials or clipboard writes")
     }
 

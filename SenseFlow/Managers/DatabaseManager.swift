@@ -68,6 +68,10 @@ class DatabaseManager {
 
     internal let storeQueue = DispatchQueue(label: "top.senseflow.history-store", qos: .userInitiated)
     private let queueKey = DispatchSpecificKey<Bool>()
+    // Owned exclusively by storeQueue; pending originals stay in SQLite, not task closures.
+    private var isRecognizingHistory = false
+    private var recognitionCursor: Int64 = 0
+    private let blobs: BlobFileManager
     private let databaseURL: URL?
     private var openedDatabaseURL: URL?
     internal var onStoreQueue: Bool { DispatchQueue.getSpecific(key: queueKey) == true }
@@ -75,6 +79,7 @@ class DatabaseManager {
     /// A custom URL isolates integration verification from user history.
     init(databaseURL: URL? = nil) {
         self.databaseURL = databaseURL
+        self.blobs = databaseURL.map { BlobFileManager(directory: $0.deletingLastPathComponent().appendingPathComponent("blobs")) } ?? .shared
         storeQueue.setSpecific(key: queueKey, value: true)
         storeQueue.sync { setupDatabase() }
     }
@@ -296,7 +301,7 @@ class DatabaseManager {
             }
             print("✅ 插入成功: \(request.type.rawValue)")
 
-            if isNew { scheduleOCRIfNeeded(type: request.type, rowId: rowId, imageData: request.imageData) }
+            if isNew { scheduleOCRIfNeeded(type: request.type, rowId: rowId) }
 
             return true
 
@@ -334,69 +339,53 @@ class DatabaseManager {
         ))
     }
 
-    /// 如果是图片类型，安排 OCR 识别
-    private func scheduleOCRIfNeeded(type: ClipboardItemType, rowId: Int64, imageData: Data?) {
-        guard type == .image else { return }
-
-        if let data = imageData {
-            print("📸 开始 OCR（小图片，\(data.count) bytes）")
-            performOCR(for: rowId, imageData: data)
-        } else {
-            scheduleOCRForLargeImage(rowId: rowId)
-        }
+    /// Starts one consumer for newly inserted images; queued work retains no image bytes.
+    private func scheduleOCRIfNeeded(type: ClipboardItemType, rowId: Int64) {
+        guard type == .image, !isRecognizingHistory else { return }
+        recognitionCursor = rowId - 1
+        isRecognizingHistory = true
+        Task.detached(priority: .utility) { await self.recognizePendingHistory() }
     }
 
-    /// 为大图片安排 OCR（从文件读取）
-    private func scheduleOCRForLargeImage(rowId: Int64) {
-        guard let db = db else { return }
-
-        do {
-            let query = historyTable.filter(id == rowId)
-            guard let row = try db.pluck(query), let path = row[blobPath] else {
-                print("⚠️ 图片没有数据，无法执行 OCR")
+    private func recognizePendingHistory() async {
+        while true {
+            let item: ClipboardItem?
+            do {
+                item = try await performStoreOperation {
+                    guard let db = self.db else {
+                        self.isRecognizingHistory = false
+                        return nil
+                    }
+                    let query = self.historyTable
+                        .filter(self.type == ClipboardItemType.image.rawValue && self.id > self.recognitionCursor)
+                        .order(self.id.asc).limit(1)
+                    guard let row = try db.pluck(query) else {
+                        self.isRecognizingHistory = false
+                        return nil
+                    }
+                    self.recognitionCursor = row[self.id]
+                    return try self.loadHistoryDetail(itemID: row[self.id], revision: row[self.uniqueId])
+                }
+            } catch {
+                _ = try? await performStoreOperation {
+                    self.isRecognizingHistory = false
+                    self.handleDatabaseError("读取OCR原件失败", error: error)
+                }
                 return
             }
-
-            guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
-                print("⚠️ 无法读取大图片文件: \(path)")
-                return
+            guard let item else { return }
+            do {
+                let data = try await HistoryMediaLoader.imageData(for: item)
+                guard let text = await OCRService.shared.recognizeText(from: data) else { continue }
+                _ = try await performStoreOperation {
+                    guard let db = self.db else { return }
+                    let current = self.historyTable.filter(self.id == item.id && self.uniqueId == item.uniqueId)
+                    try db.run(current.update(self.ocrText <- text))
+                }
+            } catch {
+                // A deleted original or failed recognition never mutates history or stops the queue.
+                continue
             }
-
-            print("📸 开始 OCR（大图片，\(data.count) bytes）")
-            performOCR(for: rowId, imageData: data)
-        } catch {
-            handleDatabaseError("读取大图片失败", error: error)
-        }
-    }
-
-    /// 后台执行 OCR 识别（不阻塞主线程）
-    /// - Parameters:
-    ///   - rowId: 数据库行 ID
-    ///   - imageData: 图片数据
-    private func performOCR(for rowId: Int64, imageData: Data) {
-        Task.detached(priority: .utility) {
-            let startTime = Date()
-            if let ocrResult = await OCRService.shared.recognizeText(from: imageData) {
-                let elapsed = Date().timeIntervalSince(startTime)
-                print("✅ OCR 完成 (\(String(format: "%.2f", elapsed))s)")
-
-                // 更新数据库
-                await self.updateOCRText(for: rowId, ocrText: ocrResult)
-            } else {
-                print("⚠️ OCR 未识别到文字")
-            }
-        }
-    }
-
-    /// 更新 OCR 文本
-    /// - Parameters:
-    ///   - rowId: 数据库行 ID
-    ///   - ocrText: OCR 识别的文本
-    private func updateOCRText(for rowId: Int64, ocrText: String) async {
-        _ = try? await performStoreOperation {
-            guard let db = self.db else { return }
-            let item = self.historyTable.filter(self.id == rowId)
-            try db.run(item.update(self.ocrText <- ocrText))
         }
     }
 
@@ -413,8 +402,8 @@ class DatabaseManager {
             return (nil, nil)
         }
 
-        if BlobFileManager.shared.shouldStoreLargeFileExternally(data) {
-            let blobPath = try BlobFileManager.shared.saveLargeFile(data: data, uniqueId: uniqueId)
+        if blobs.shouldStoreLargeFileExternally(data) {
+            let blobPath = try blobs.saveLargeFile(data: data, uniqueId: uniqueId)
             return (nil, blobPath)
         } else {
             return (data, nil)
@@ -495,7 +484,7 @@ class DatabaseManager {
             let query = historyTable.filter(id == itemId)
             if let row = try db.pluck(query) {
                 if let path = row[blobPath] {
-                    BlobFileManager.shared.deleteBlobFile(at: path)
+                    blobs.deleteBlobFile(at: path)
                 }
             }
 
@@ -520,7 +509,7 @@ class DatabaseManager {
                 try db.run("DELETE FROM document_drafts")
                 try db.run("DELETE FROM document_versions")
             }
-            try BlobFileManager.shared.cleanupAllBlobFiles()
+            try blobs.cleanupAllBlobFiles()
 
             print("✅ 已清空所有记录")
 

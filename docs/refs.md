@@ -594,3 +594,5 @@ Apple Doc MCP核对withAnimation(_:completionCriteria:_:completion:)在所有动
 - [Swift Actor](https://developer.apple.com/documentation/swift/actor)提供 actor 的串行执行边界。生成准备/响应处理属于后台服务，UI记录写入才切换主actor；网络等待期间多个请求各自持有SDK client。
 
 本批未升级SDK、修改外部端点或引入新SQL行为；SQLite文档事务保留原实现与单一数据库队列，实际迁移和草稿验证覆盖这些边界。
+
+2026-10-08 OCR队列重构复用既有HistoryMediaLoader/Vision接口，未引入新Apple API。Apple Doc MCP的ImageIO技术选择无法解析，CGImageSourceCreateImageAtIndex文档请求返回404；因此本批不据此修改图像解码API。
