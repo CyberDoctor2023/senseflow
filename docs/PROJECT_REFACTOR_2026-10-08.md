@@ -151,3 +151,5 @@ OCR诊断：只读隔离数据库确认403已识别、405尚无结果，404已�
 二次观测同样失败，403有文本、405无结果。进程37004一秒采样显示等待主事件循环及store轮询，没有正在执行的Vision识别栈，不能认定持续系统识别耗时是原因。生产OCR catch原来静默返回nil，下一步补仅NSError domain/code的诊断（不含图像、识别文本、路径或密钥），以区别空结果、取消和实际系统错误；不增加自动重试或改变识别语言。
 
 第十三批：build-stage13.log通过，risk-stage13.log捕获TextRecognition.CRImageReaderError code1并同样未通过。对比独立ImageIO解码成功与生产NSImage转换失败，改用ImageIO直接解码原始Data，不改变Vision语言/识别级别、不重试掩盖错误。删除无外部调用的NSImage/CGImage公开转发重载，保留核心识别私有入口。Apple Doc MCP选中Image I/O但symbol返回404，官方网页仅提供JS入口，记录检索限制；本次选择基于同原件实测，构建和原风险断言仍须验证。
+
+第十四批：build-stage14.log通过，但原risk-stage14.log仍出现相同CRImageReaderError code1，说明改用ImageIO尚不能解决识别失败，前一轮解码路径假设未被证实。不宣称修复通过；ImageIO保留作为移除AppKit后台图像转换的统一原件解码路径，继续用独立连续两张Vision请求区分多请求状态与数据库消费行为。当前两个原生诊断进程保留可观测日志与句柄，不无证据重启。
