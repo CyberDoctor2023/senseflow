@@ -126,19 +126,15 @@ import QuartzCore
     private var teaserRestFrame: NSRect?
     private var teaserStart: CFTimeInterval = 0
     private var teaserStartY: CGFloat = 0
-    init(tour: ClipboardOnboardingCoordinator) {
+    init(tour: ClipboardOnboardingCoordinator, writer: ClipboardWriter, onPaste: @escaping () -> Void) {
         self.tour = tour
         let repository = ClipboardTutorialRepository(records: Self.examples())
         self.repository = repository
-        let writer = NSPasteboardAdapter(monitor: .shared)
         let host = DocumentWindowHost(workspace: workspace, onboarding: tour)
         let documents = DocumentPreviewCoordinator(repository: repository, writer: writer, host: host)
         self.documents = documents
         let actions = HistoryActionCoordinator(documents: documents, repository: repository, writer: writer,
-            onPaste: {
-                FloatingWindowManager.shared.hideWindow()
-                AutoPasteManager.shared.performAutoPaste()
-            })
+            onPaste: onPaste)
         model = ClipboardListViewModel(repository: repository, actions: actions,
             thumbnails: ClipboardThumbnailLoader(repository: repository))
         let factory = WindowFactory(layoutConfig: layout, repository: repository, onboarding: tour)

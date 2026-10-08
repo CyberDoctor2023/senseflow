@@ -169,7 +169,14 @@ import SwiftUI
         if activeWindow != nil { documentPreview.historyHidden() }
         ClipboardMonitor.shared.stopMonitoring()
         TextSelectionMonitor.shared.stopMonitoring()
-        if tutorial == nil { tutorial = ClipboardTutorialSession(tour: onboarding) }
+        if tutorial == nil {
+            tutorial = ClipboardTutorialSession(tour: onboarding,
+                writer: NSPasteboardAdapter(monitor: .shared),
+                onPaste: { [weak self] in
+                    self?.hideWindow()
+                    AutoPasteManager.shared.performAutoPaste()
+                })
+        }
         tutorial?.show()
     }
 
