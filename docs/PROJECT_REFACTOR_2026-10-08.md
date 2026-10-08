@@ -209,3 +209,7 @@ OCR诊断：只读隔离数据库确认403已识别、405尚无结果，404已�
 第二十七批实施合同：用户物理按压日志recording-physical-stage24.log确认PID50350于14:45:38收到录屏intent并绑定URL，applicationActive=true；排除触发/详情失败。将SwiftUI列表级quickLookPreview替换为HistoryActionCoordinator拥有的唯一原生QLPreviewPanel会话，显式数据源、显示和关闭状态；删除被替代modifier，不并存fallback。仍使用系统Quick Look、不增加播放器、不改原件；外部收起清空会话，系统关闭清空绑定。官方MCP QuickLookUI选择失败但QLPreviewPanel路径可读，确认shared/dataSource/reloadData/delegate API。完成条件：构建、原生录屏控制验证及真实运行呈现；临时日志删除。
 
 第二十七批证据：build-stage27.log通过。capture-pair-stage27异步main未运行完整AppKit事件循环，退出时没有执行最后QL断言，不计通过；改为NSApplication.run驱动Task，capture-runloop-stage27.log完整通过原生QLPreviewPanel可见、原件/去重/历史/缩略图/SQL筛选。删除所有临时录屏诊断和列表quickLookPreview绑定，唯一原生会话负责dataSource/delegate/显示/关闭。正常退出诊断版后备份SenseFlow-before-stage27.app，新版签名验证并启动PID64055，尚待用户真实长按呈现确认；不将隔离验证等同实机体验。
+
+第二十八批动效合同：A经典/B起伏共享滚动物理。鼠标没有系统momentum的输入停止后按速度指数衰减；新输入立即取消旧惯性，边缘使用NSScrollView弹性不增加自绘弹簧。已有native momentum不叠加。有限计时器在停止、隐藏/拆卸、反向时结束；减少动态效果时不生成额外惯性。初步参数时间常数0.20s、速度上限1200pt/s、停止阈值8pt/s、最长1.2s，参数仅作为首版体验值不是苹果官方常量。完成条件：构建、真实窗口轮事件停止/反向/边缘验证及实际体验。官方NSEvent.momentumPhase表示原生惯性阶段，NSScrollView.horizontalScrollElasticity只定义弹性，两者不能互相代替。
+
+阶段 28 验证与替换：`out/2026-10-08-project-refactor/build-stage28-final.log` 构建成功；`scroll-stage28.log` 原生滚动、边缘回弹及末卡可达回归通过。正常退出旧版后通过 DeployDevelopment.py stage28 替换，旧版保存在 `/Users/jack/Applications/senseflow-development-2026-10-08/SenseFlow-before-stage28.app`。新版 PID 57401，CUA 确认历史窗口及卡片加载。惯性手感仍需真实鼠标体验，不将自动回归视为主观动效验收。

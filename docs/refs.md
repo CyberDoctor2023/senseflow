@@ -608,3 +608,5 @@ Apple Doc MCP核对withAnimation(_:completionCriteria:_:completion:)在所有动
 - 2026-10-08：录屏Quick Look焦点回归。Apple Doc MCP选SwiftUI后quickLookPreview查询返回无关动画符号，采用官方页面 https://developer.apple.com/documentation/swiftui/view/quicklookpreview(_:) ：系统预览由可选URL绑定呈现。本应用窗口自动隐藏对系统预览会话的处理属于本地设计，不由文档推断系统key通知顺序。
 
 - 2026-10-08：原生录屏会话采用QLPreviewPanel，Apple Doc MCP读取 /documentation/quicklookui/qlpreviewpanel（technology名称选择不可解析，但页面返回API）确认shared、dataSource、reloadData、delegate。官方对应 https://developer.apple.com/documentation/quicklookui/qlpreviewpanel 。窗口池和焦点行为由实际原生验证负责，不把页面描述当作焦点保证。
+
+- 阶段 28 滚动惯性：Apple Doc MCP 查询 [NSEvent.momentumPhase](https://developer.apple.com/documentation/appkit/nsevent/momentumphase) 与 [NSScrollView.horizontalScrollElasticity](https://developer.apple.com/documentation/appkit/nsscrollview/horizontalscrollelasticity)。无系统惯性的鼠标补充衰减参数为项目选择，非苹果官方预设。

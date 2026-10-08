@@ -209,6 +209,10 @@ struct HorizontalWheelRegion: NSViewRepresentable {
         private weak var gestureScroll: NSScrollView?
         private var wheelEndTimer: Timer?
         private var lastMouseWheelDelta: CGFloat = 0
+        private var momentumTimer: Timer?
+        private var wheelVelocity: CGFloat = 0
+        private var lastWheelTime: TimeInterval?
+        private var momentumStart: TimeInterval = 0
         var trackpadContactsPresent: () -> Bool = { TrackpadRevealMonitor.shared.hasScrollingContacts }
         private var consumingVerticalTouchGesture = false
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -220,6 +224,7 @@ struct HorizontalWheelRegion: NSViewRepresentable {
             registeredPanel = panel
         }
         func unregister() {
+            stopMomentum()
             finishWheelGesture()
             lastMouseWheelDelta = 0
             consumingVerticalTouchGesture = false
@@ -251,11 +256,12 @@ struct HorizontalWheelRegion: NSViewRepresentable {
                 lastMouseWheelDelta = 0
                 return true
             }
+            stopMomentum()
             configure(scroll)
             onScroll?()
             if vertical {
                 let pixels = event.scrollingDeltaY * (event.hasPreciseScrollingDeltas ? 1 : 24)
-                let discrete = event.phase.isEmpty && event.momentumPhase.isEmpty
+                let discrete = !touchingTrackpad && event.momentumPhase.isEmpty
                 if discrete {
                     guard pixels != 0 else { return true }
                     if pixels * lastMouseWheelDelta < 0 {
@@ -277,6 +283,11 @@ struct HorizontalWheelRegion: NSViewRepresentable {
                             scroll.horizontalScrollElasticity = .allowed
                         }
                     }
+                    let now = ProcessInfo.processInfo.systemUptime
+                    let interval = lastWheelTime.map { min(0.12, max(0.016, now - $0)) } ?? 0.06
+                    let measured = min(1200, max(-1200, pixels / interval))
+                    wheelVelocity = pixels * lastMouseWheelDelta < 0 ? measured : measured * 0.65 + wheelVelocity * 0.35
+                    lastWheelTime = now
                     lastMouseWheelDelta = pixels
                 } else {
                     finishWheelGesture()
@@ -290,7 +301,7 @@ struct HorizontalWheelRegion: NSViewRepresentable {
                     gestureScroll = scroll
                     wheelEndTimer?.invalidate()
                     let timer = Timer(timeInterval: 0.12, repeats: false) { [weak self] _ in
-                        MainActor.assumeIsolated { self?.finishWheelGesture() }
+                        MainActor.assumeIsolated { self?.beginMomentum() }
                     }
                     wheelEndTimer = timer
                     RunLoop.main.add(timer, forMode: .common)
@@ -301,6 +312,50 @@ struct HorizontalWheelRegion: NSViewRepresentable {
                 scroll.scrollWheel(with: event)
             }
             return true
+        }
+        private func stopMomentum() {
+            guard momentumTimer != nil else { return }
+            momentumTimer?.invalidate()
+            momentumTimer = nil
+            if let scroll = gestureScroll,
+               let ended = NativeHistoryWheelEvent.make(pixels: 0, phase: 0, momentum: 3) {
+                scroll.scrollWheel(with: ended)
+            }
+            gestureScroll = nil
+        }
+        private func beginMomentum() {
+            guard let scroll = gestureScroll else { return }
+            finishWheelGesture()
+            guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, abs(wheelVelocity) > 8 else { return }
+            gestureScroll = scroll
+            momentumStart = ProcessInfo.processInfo.systemUptime
+            if let event = NativeHistoryWheelEvent.make(pixels: 0, phase: 0, momentum: 1) {
+                scroll.scrollWheel(with: event)
+            }
+            let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.advanceMomentum() }
+            }
+            momentumTimer = timer
+            RunLoop.main.add(timer, forMode: .common)
+        }
+        private func advanceMomentum() {
+            guard let scroll = gestureScroll, window?.isVisible == true,
+                  abs(wheelVelocity) > 8,
+                  ProcessInfo.processInfo.systemUptime - momentumStart < 1.2 else {
+                if let scroll = gestureScroll,
+                   let event = NativeHistoryWheelEvent.make(pixels: 0, phase: 0, momentum: 3) {
+                    scroll.scrollWheel(with: event)
+                }
+                stopMomentum()
+                gestureScroll = nil
+                wheelVelocity = 0
+                lastWheelTime = nil
+                return
+            }
+            wheelVelocity *= CGFloat(exp(-1.0 / 60 / 0.20))
+            if let event = NativeHistoryWheelEvent.make(pixels: wheelVelocity / 60, phase: 0, momentum: 2) {
+                scroll.scrollWheel(with: event)
+            }
         }
         private func finishWheelGesture() {
             wheelEndTimer?.invalidate(); wheelEndTimer = nil
