@@ -600,3 +600,5 @@ Apple Doc MCP核对withAnimation(_:completionCriteria:_:completion:)在所有动
 缩略图等待者取消依据Apple Swift `withTaskCancellationHandler(operation:onCancel:isolation:)`（Apple Doc MCP读取2026-10-08）：取消触发独立handler；actor中注销等待者，不能假定等待共享任务会自动取消该任务。https://developer.apple.com/documentation/swift/withtaskcancellationhandler(operation:oncancel:isolation:)
 
 2026-10-08捕获设置闪退：Apple Doc MCP读取NSMetadataQuery.predicate，入口https://developer.apple.com/documentation/foundation/nsmetadataquery/predicate 。接口概述不足以保证Foundation任意compound都适合Spotlight。隔离真实启动查询复现“NSOrPredicateType NSCompoundPredicate with wrong number (1) of subpredicates”；单类别直接predicate、双类别OR，全部类别/日期边界组合通过实际query.start验证。证据见out/2026-10-08-project-refactor/predicate-start-date.log与risk-stage7.log；不是用fixture模拟外部API。
+
+- 2026-10-08 OCR：Apple Doc MCP `RecognizeTextRequest`：macOS15起支持Swift异步图片Data识别；工程部署15.6可直接采用，无需旧VN并行路径。官方入口：https://developer.apple.com/documentation/vision/recognizetextrequest 。独立连续同原件实验见 `out/2026-10-08-project-refactor/vision-modern-stage16.log`；实验不代替产品回归。

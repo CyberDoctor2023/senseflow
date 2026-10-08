@@ -155,3 +155,7 @@ OCR诊断：只读隔离数据库确认403已识别、405尚无结果，404已�
 第十四批：build-stage14.log通过，但原risk-stage14.log仍出现相同CRImageReaderError code1，说明改用ImageIO尚不能解决识别失败，前一轮解码路径假设未被证实。不宣称修复通过；ImageIO保留作为移除AppKit后台图像转换的统一原件解码路径，继续用独立连续两张Vision请求区分多请求状态与数据库消费行为。当前两个原生诊断进程保留可观测日志与句柄，不无证据重启。
 
 第十五批诊断：独立连续ImageIO/Vision请求第一张15.048s成功，第二张0.032s报e5rtError（precompiled compute operation创建失败，13），无应用数据库/队列参与。官方VNRequest.setComputeDevice(_:for:)与supportedComputeStageDevices接口经Apple Doc MCP和当前SDK核实；隔离CPU设备选择实验同样第二张失败（vision-cpu-stage15.log），没有把此无效设备切换写入产品。继续独立autoreleasepool生命周期实验，保留原始识别要求。
+
+第十六批实施合同：独立autoreleasepool实验仍第二张e5rtError；改用macOS15起的Swift RecognizeTextRequest对相同两张原件连续请求成功（14.803s、1.251s，各1个结果，vision-modern-stage16.log）。官方Apple Doc MCP确认其支持Data异步perform，工程最低macOS15.6满足可用性。替换旧VN请求及手动ImageIO转换，不保留双路径/fallback；语言、精度、取消检查、单消费者与隐私安全错误日志保持。完成条件为构建及原有OCR删除竞争完整风险验证通过，而不是仅独立实验通过。
+
+第十六批证据：build-stage16.log构建通过；risk-stage16.log整套风险验证通过，含连续OCR跨删除、被删除记录不复活、Spotlight实际启动组合、工具并发、分页/刷新竞争、缓存取消与两库原件隔离。新Swift请求替换后本轮回归成立；不由此宣称所有设备的系统引擎问题已根治。运行开发版仍为stage9，尚需安全同步及最终原生交互证据核对。

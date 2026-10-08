@@ -8,10 +8,9 @@
 
 import Foundation
 import Vision
-import ImageIO
 
 /// OCR 服务（使用 Vision 框架识别图片中的文字）
-/// 使用 VNRecognizeTextRequest（macOS 12+ 兼容）
+/// 使用 macOS 15 起的原生异步识别请求。
 actor OCRService {
 
     // MARK: - Singleton
@@ -26,29 +25,16 @@ actor OCRService {
     /// - Parameter imageData: 图片数据
     /// - Returns: 识别出的文本，失败返回 nil
     func recognizeText(from imageData: Data) async -> String? {
-        guard let source = CGImageSourceCreateWithData(imageData as CFData, nil),
-              let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
-            print("❌ OCR: 无法从 Data 创建 CGImage")
-            return nil
-        }
-
-        return await performRecognition(from: cgImage)
-    }
-
-    /// 识别图片中的文字（核心方法）
-    /// - Parameter cgImage: CGImage
-    /// - Returns: 识别出的文本，失败返回 nil
-    private func performRecognition(from cgImage: CGImage) async -> String? {
-        // Vision's perform is synchronous. A single return path owns completion;
-        // no callback and catch can resume the same continuation twice.
-        let request = VNRecognizeTextRequest()
+        var request = RecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
-        request.recognitionLanguages = ["zh-Hans", "zh-Hant", "en-US"]
+        request.recognitionLanguages = ["zh-Hans", "zh-Hant", "en-US"].map {
+            Locale.Language(identifier: $0)
+        }
         do {
-            try VNImageRequestHandler(cgImage: cgImage, options: [:]).perform([request])
+            let observations = try await request.perform(on: imageData)
             guard !Task.isCancelled else { return nil }
-            let text = (request.results ?? []).compactMap {
+            let text = observations.compactMap {
                 $0.topCandidates(1).first?.string
             }.joined(separator: " ")
             return text.isEmpty ? nil : text
