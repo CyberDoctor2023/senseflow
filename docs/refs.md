@@ -604,3 +604,5 @@ Apple Doc MCP核对withAnimation(_:completionCriteria:_:completion:)在所有动
 - 2026-10-08 OCR：Apple Doc MCP `RecognizeTextRequest`：macOS15起支持Swift异步图片Data识别；工程部署15.6可直接采用，无需旧VN并行路径。官方入口：https://developer.apple.com/documentation/vision/recognizetextrequest 。独立连续同原件实验见 `out/2026-10-08-project-refactor/vision-modern-stage16.log`；实验不代替产品回归。
 
 - 2026-10-08 滚轮分流：Apple Doc MCP `NSEvent/hasPreciseScrollingDeltas`只描述delta精度，不能单独当作硬件身份。https://developer.apple.com/documentation/appkit/nsevent/hasprecisescrollingdeltas 。phase MCP路径404，官方入口 https://developer.apple.com/documentation/appkit/nsevent/phase 。高精度无phase鼠标事件与带phase的纵向手势通过真实NSPanel事件派发分别验证。
+
+- 2026-10-08：录屏Quick Look焦点回归。Apple Doc MCP选SwiftUI后quickLookPreview查询返回无关动画符号，采用官方页面 https://developer.apple.com/documentation/swiftui/view/quicklookpreview(_:) ：系统预览由可选URL绑定呈现。本应用窗口自动隐藏对系统预览会话的处理属于本地设计，不由文档推断系统key通知顺序。

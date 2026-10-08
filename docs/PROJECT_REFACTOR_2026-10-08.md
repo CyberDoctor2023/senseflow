@@ -189,3 +189,7 @@ OCR诊断：只读隔离数据库确认403已识别、405尚无结果，404已�
 第二十一批交互合同：用户确认起伏在进入背景时突然抬升，要求仅进入矩形边界才启动。现有ScrollView连续hover只记录X，在背景纵向留白也产生全强度波峰。改为由现有原生卡片命中通知激活波峰，离开卡片/进入间隙归零，仍用鼠标X定位邻卡起伏；强度变化沿用统一选中反馈缓动。经典/起伏仍独立，不修改滚轮路由、长按或预览。验证需构建和实际背景→卡片→间隙运行检查，不能仅凭代码完成。最终包已另存delivery-stage19-final，签名与当前运行dylib SHA256一致，旧delivery保留。
 
 第二十一批证据：build-stage21.log通过，git diff --check通过。卡片现有NSTrackingArea边界通知控制hoveredCardID，离开事件仅清除自身ID，避免旧卡离开清除新卡；波峰强度按SelectionFeedback.duration缓动，无新增后台任务、SQL或解码。正常Command-Q退出旧进程后核对进程不存在，备份SenseFlow-before-stage21.app，再签名验证安装；新版PID46196启动并由CUA读到实际搜索/分类/历史窗口。首次CUA启动观察超时后只检查同一进程并重新绑定，没有重复启动。CUA现有接口没有纯鼠标移动/hover操作，尚不能提供实际背景→卡片→间隙轨迹的视觉验收；不将启动成功作为动效验收。整体目标保持active。
+
+第二十二批故障合同：用户报告录屏长按只闪一下随后历史消失。现有SwiftUI quickLookURL已设置，但FloatingWindowManager只认可注册的历史/文档窗口，系统Quick Look接管key时可能被内部失焦自动隐藏。修复内部预览会话保持历史：同应用且Quick Look绑定非空时不自动隐藏；主动收起历史清空绑定，外部应用切换仍正常收起。不永久固定窗口、不拦截系统窗口。另document-stage21.log再次重现关闭后再打开失败，诊断source/loading/transition/visible均false，无加载错误；仍保留断言待定位，不宣称完整回归通过。
+
+第二十二批构建/运行证据：build-stage22.log通过，旧版正常退出后保存SenseFlow-before-stage22.app，新包签名验证并启动PID48126。CUA选择真实录屏分类，索引及坐标右键长按后历史保持可见，但AX及截图未观察到Quick Look窗口，因此仅证明当前观察未发生历史消失，不证明录屏预览已验收；继续定位按压触发与呈现链。未修改用户录屏原件、未粘贴或触发播放。

@@ -222,6 +222,7 @@ import SwiftUI
 
     /// 隐藏窗口（对称的下滑 + 淡出动画）
     func hideWindow() {
+        historyActions.quickLookURL = nil
         if tutorialHandoffTask != nil { tutorial?.hide() }
         if !onboarding.isComplete { tutorial?.hide(); return }
         guard let window = activeWindow else { return }
@@ -231,6 +232,7 @@ import SwiftUI
 
     /// 隐藏窗口并激活前一个应用（用于粘贴场景，也使用对称动画）
     func hideWindowImmediately() {
+        historyActions.quickLookURL = nil
         guard let window = activeWindow else { return }
         documentPreview.historyHidden()
         windowLifecycle.hideWindow(window) {
@@ -364,6 +366,8 @@ import SwiftUI
             if outsideApp { tutorial?.hide() }
             return
         }
+        // System Quick Look owns its own key window outside our registered workspace.
+        if !outsideApp, historyActions.quickLookURL != nil { return }
         guard windowLifecycle.canAutoHide, !isPinned, !historyActions.isDragging,
               activeWindow?.isVisible == true,
               outsideApp || !workspace.hasKeyWindow else { return }
