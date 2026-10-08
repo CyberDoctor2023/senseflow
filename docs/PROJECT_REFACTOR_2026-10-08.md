@@ -121,3 +121,5 @@ OCR测量使用55eb73c数据库代码（仅将BlobFileManager目录注入为隔�
 第十批构建证据：build-stage10.log通过；生产唯一教程构造点同步，通知同步查询在生产与Tests检索均无残留。本批没有增加教程专用生产分支。原生教程与系统快捷键验证尚未完成，构建不代替流程验收。
 
 第十批引导进度证据：Tests/OnboardingProgressVerification.swift链接当前stage10生产模块，使用独立UserDefaults suite。onboarding-progress-stage10.log通过首次等待呼出、先左后右、单方向不前进、900ms阅读与600ms退场期间继续滑动取消切换、预览关闭前不接受分类完成、结束只回调一次、重建恢复及重启清空状态。未写实际剪贴板或生产设置；此验证覆盖进度与异步切换合同，不覆盖原生布局、系统快捷键和触控板视觉。
+
+第十批原生生命周期证据：Tests/TutorialLifecycleVerification.swift在真实NSApplication.run事件循环中创建生产ClipboardTutorialSession，注入独立进度与隔离writer。tutorial-lifecycle-stage10.log通过提示显示/隐藏、示例列表加载、有效窗口尺寸、收起动画结束、再次呼出及关闭后不复活；写入和粘贴次数均为零。不宣称这证明了系统快捷键、实际长按、触控板或视觉排版。
