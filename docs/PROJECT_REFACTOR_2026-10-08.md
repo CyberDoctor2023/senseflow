@@ -145,3 +145,5 @@ OCR测量使用55eb73c数据库代码（仅将BlobFileManager目录注入为隔�
 第十二批实施合同：全项目调用图确认RegisterToolHotKey与HotKeyRegistry只剩彼此及专用Mock/用例测试，没有产品构造点。删除旧协议、纯转发用例和只验证该废弃路径的测试/Mock，同步工程引用与ExecutePromptTool注释；由Git基线保留恢复能力。实际PromptToolCoordinator集成测试保留，不删真实快捷键错误传播与工具创建覆盖。现有隔离风险验证重新链接stage11模块，之后与本批清理合并构建；不以删除测试宣称它们通过。
 
 第十二批构建build-stage12.log通过。重新链接stage11的risk-stage11.log在OCR消费者识别断言未通过，进程14844终止exit133（async main抛出Failure后Swift顶层fatal error）；此前Spotlight组合、工具并发、记录界限、分页与刷新竞争通过。本次不宣称风险整套通过，不修改断言掩盖失败；需诊断Vision完成时延/队列结果，原件和隔离数据库保存在risk-data-stage11供复核。
+
+OCR诊断：只读隔离数据库确认403已识别、405尚无结果，404已删除；同一405原件独立ImageIO+VNRecognizeTextRequest成功，2400×800像素，17.386s、1个结果（vision-diagnostic-stage12.log）。这说明原件可识别，但尚不足证明原队列失败仅为系统时延。已据此启动同一风险二次观测，日志risk-stage11-repeat.log；不改60s断言、不改生产OCR代码，待比较实际结果。
