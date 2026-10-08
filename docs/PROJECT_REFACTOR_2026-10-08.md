@@ -123,3 +123,19 @@ OCR测量使用55eb73c数据库代码（仅将BlobFileManager目录注入为隔�
 第十批引导进度证据：Tests/OnboardingProgressVerification.swift链接当前stage10生产模块，使用独立UserDefaults suite。onboarding-progress-stage10.log通过首次等待呼出、先左后右、单方向不前进、900ms阅读与600ms退场期间继续滑动取消切换、预览关闭前不接受分类完成、结束只回调一次、重建恢复及重启清空状态。未写实际剪贴板或生产设置；此验证覆盖进度与异步切换合同，不覆盖原生布局、系统快捷键和触控板视觉。
 
 第十批原生生命周期证据：Tests/TutorialLifecycleVerification.swift在真实NSApplication.run事件循环中创建生产ClipboardTutorialSession，注入独立进度与隔离writer。tutorial-lifecycle-stage10.log通过提示显示/隐藏、示例列表加载、有效窗口尺寸、收起动画结束、再次呼出及关闭后不复活；写入和粘贴次数均为零。不宣称这证明了系统快捷键、实际长按、触控板或视觉排版。
+
+## 当前生产职责地图与剩余审查
+
+| 职责 | 当前唯一所有者 | 边界 |
+| --- | --- | --- |
+| 历史摘要、分页与刷新代际 | ClipboardListViewModel | 界面读取不再分析全文；一个刷新任务合并通知 |
+| 原件读取、图片导出和解码 | HistoryMediaLoader | 文件与ImageIO工作离开UI/store执行器 |
+| 缩略图缓存和排队 | ClipboardThumbnailLoader | 两个实际加载名额；LRU与等待者取消 |
+| 文档事务和草稿版本 | SQLiteDocumentStore | 同一DatabaseManager队列/连接，无第二份数据库 |
+| Spotlight订阅/候选队列 | SystemCaptureService | 顺序导入、代际取消；不按文件名猜来源 |
+| 捕获稳定性/媒体准备 | SystemCaptureFileImporter | 原件内容和系统标记校验 |
+| 教程进度/示例记录 | ClipboardOnboardingCoordinator / ClipboardTutorialRepository | 独立设置与示例库；原生会话共用产品界面 |
+| 教程外部粘贴副作用 | FloatingWindowManager组合入口 | 显式传入writer与onPaste |
+| AI身份/生成/诊断 | CodexAuthManager / AIService actor / InMemoryAPIRequestRecorder | 请求局部client；诊断数量和字节有界 |
+
+工程成员已确认媒体、捕获、示例仓库及文档存储均在Sources。旧捕获目录bookmark仍由现有授权恢复路径使用，保留以免撤销已有访问；没有重新引入文件夹选择界面。SQLitePromptToolRepository末尾教学内容不属于运行合同；RepositoryError.notFound全项目无调用，删除这两项。剩余重点是原生交互体验证据、运行版同步和真实Sendable所有权诊断，不扩大为全项目Swift 6迁移。
