@@ -147,3 +147,5 @@ OCR测量使用55eb73c数据库代码（仅将BlobFileManager目录注入为隔�
 第十二批构建build-stage12.log通过。重新链接stage11的risk-stage11.log在OCR消费者识别断言未通过，进程14844终止exit133（async main抛出Failure后Swift顶层fatal error）；此前Spotlight组合、工具并发、记录界限、分页与刷新竞争通过。本次不宣称风险整套通过，不修改断言掩盖失败；需诊断Vision完成时延/队列结果，原件和隔离数据库保存在risk-data-stage11供复核。
 
 OCR诊断：只读隔离数据库确认403已识别、405尚无结果，404已删除；同一405原件独立ImageIO+VNRecognizeTextRequest成功，2400×800像素，17.386s、1个结果（vision-diagnostic-stage12.log）。这说明原件可识别，但尚不足证明原队列失败仅为系统时延。已据此启动同一风险二次观测，日志risk-stage11-repeat.log；不改60s断言、不改生产OCR代码，待比较实际结果。
+
+二次观测同样失败，403有文本、405无结果。进程37004一秒采样显示等待主事件循环及store轮询，没有正在执行的Vision识别栈，不能认定持续系统识别耗时是原因。生产OCR catch原来静默返回nil，下一步补仅NSError domain/code的诊断（不含图像、识别文本、路径或密钥），以区别空结果、取消和实际系统错误；不增加自动重试或改变识别语言。

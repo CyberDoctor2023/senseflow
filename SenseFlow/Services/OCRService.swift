@@ -71,7 +71,9 @@ actor OCRService {
             }.joined(separator: " ")
             return text.isEmpty ? nil : text
         } catch {
-            // Recognition failure is recoverable. Never log captured text.
+            // Preserve failure evidence without logging captured text, image bytes, or paths.
+            let failure = error as NSError
+            print("OCR failed: domain=\(failure.domain), code=\(failure.code)")
             return nil
         }
     }
