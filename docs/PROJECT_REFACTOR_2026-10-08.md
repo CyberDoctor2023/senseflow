@@ -193,3 +193,5 @@ OCR诊断：只读隔离数据库确认403已识别、405尚无结果，404已�
 第二十二批故障合同：用户报告录屏长按只闪一下随后历史消失。现有SwiftUI quickLookURL已设置，但FloatingWindowManager只认可注册的历史/文档窗口，系统Quick Look接管key时可能被内部失焦自动隐藏。修复内部预览会话保持历史：同应用且Quick Look绑定非空时不自动隐藏；主动收起历史清空绑定，外部应用切换仍正常收起。不永久固定窗口、不拦截系统窗口。另document-stage21.log再次重现关闭后再打开失败，诊断source/loading/transition/visible均false，无加载错误；仍保留断言待定位，不宣称完整回归通过。
 
 第二十二批构建/运行证据：build-stage22.log通过，旧版正常退出后保存SenseFlow-before-stage22.app，新包签名验证并启动PID48126。CUA选择真实录屏分类，索引及坐标右键长按后历史保持可见，但AX及截图未观察到Quick Look窗口，因此仅证明当前观察未发生历史消失，不证明录屏预览已验收；继续定位按压触发与呈现链。未修改用户录屏原件、未粘贴或触发播放。
+
+第二十三批诊断证据：检查既有capture-stage7验证发现其使用普通titled NSWindow且主动激活，与生产borderless/nonactivating面板不一致。隔离VerifyCapturePanel.swift仅将窗口替换为生产KeyboardAcceptingPanel样式并去掉主动激活，使用当前模块及隔离示例原件，capture-panel-stage23.log通过系统QLPreviewPanel实际可见断言、文件原件/去重/筛选/缩略图校验。这排除“这种面板不能呈现Quick Look”的假设，但没有覆盖FloatingWindowManager自动隐藏和物理长按链；不修改生产逻辑伪造根因。下一步应对真实长按入口与quickLookURL时序进行有界诊断，最终回归仍未完成。
