@@ -114,6 +114,19 @@ import AppKit
         let remaining = try await store.fetchRecentItemsAsync(limit: 10)
         try require(!remaining.contains { $0.id == removed }, "late recognition cannot recreate a deleted image")
         guard let summary = remaining.first(where: { imageIDs.contains($0.id) }) else { throw Failure("recognized image missing") }
+        let thumbnails = ClipboardThumbnailLoader(repository: content, maxBytes: 1_048_576, maxCount: 2)
+        guard let hot = await thumbnails.thumbnail(for: summary, pixels: 96),
+              let cold = await thumbnails.thumbnail(for: summary, pixels: 120) else { throw Failure("thumbnail preparation failed") }
+        _ = await thumbnails.thumbnail(for: summary, pixels: 96)
+        _ = await thumbnails.thumbnail(for: summary, pixels: 160)
+        let retained = await thumbnails.thumbnail(for: summary, pixels: 96)
+        let rebuilt = await thumbnails.thumbnail(for: summary, pixels: 120)
+        try require(retained === hot && rebuilt !== cold, "cache pressure retains the recently used thumbnail and evicts only the cold one")
+        let tinyCache = ClipboardThumbnailLoader(repository: content, maxBytes: 32, maxCount: 2)
+        let oversizedFirst = await tinyCache.thumbnail(for: summary, pixels: 96)
+        let oversizedSecond = await tinyCache.thumbnail(for: summary, pixels: 96)
+        try require(oversizedFirst != nil && oversizedSecond != nil && oversizedFirst !== oversizedSecond,
+                    "a thumbnail above the byte budget remains usable without being retained")
         let original = try await store.performStoreOperation { try store.loadHistoryDetail(itemID: summary.id, revision: summary.uniqueId) }
         let data = try await HistoryMediaLoader.imageData(for: original)
         let otherDirectory = directory.appendingPathComponent("other")
