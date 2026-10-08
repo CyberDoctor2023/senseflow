@@ -109,3 +109,5 @@ OCR测量使用55eb73c数据库代码（仅将BlobFileManager目录注入为隔�
 组合层三个所有者（DependencyContainer、DependencyEnvironment、AppDependencies）明确MainActor，lazy依赖和启动单例由同一UI线程初始化与读取；现有调用入口仅SwiftUI/AppDelegate/异步快捷键协调器。可观察请求记录协议属于UI主线程，异步记录协议保持可跨执行器调用。不将数据库或原生适配器随意标成unchecked Sendable，不机械迁移整个项目到Swift 6。验证构建和实际启动初始化；删除记录器已过时的教学/未来扩展注释。
 
 第九批证据：build-stage9.log构建通过，组合层与可观察记录协议相关隔离告警消失。既有数据库/原生适配器的Sendable诊断仍需按真实所有权审查，未用unchecked Sendable消音。此次提交保留测量原始数据与诚实的吞吐限制；运行版替换、实际启动与引导全流程仍为剩余验收，整体目标不标完成。
+
+第九批实际启动：旧开发版正常Command-Q退出，进程确认终止后保存完整备份至out/2026-10-08-project-refactor/development-app-before-stage9/SenseFlow.app，并保留开发目录中的SenseFlow-pre-stage9.app。完整stage9构建复制到既有开发路径，去除实际存在的构建目录rpath并重新本地签名。新进程34697启动，CUA实际读出搜索、类别、固定及原有历史列表，没有新权限提示；不记录个人历史内容。随后窗口在焦点变化中不可见，CUA滚动/呼出未取得有效窗口证据，进程仍存活且无新增崩溃报告。启动加载通过，但不将这一观察当作滚轮/快捷键/引导全流程通过，后续继续核验。
