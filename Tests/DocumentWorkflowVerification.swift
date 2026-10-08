@@ -175,7 +175,12 @@ import CryptoKit
         try await waitUntil { !host.isTransitioning }
         let reopenIntent = coordinator.beginPointerPreviewIntent()
         coordinator.togglePointerPreview(sourceItem, anchor: anchor, expectedRequest: reopenIntent)
-        try await waitUntil { coordinator.source != nil && !host.isTransitioning }
+        do {
+            try await waitUntil { coordinator.source != nil && !host.isTransitioning }
+        } catch {
+            print("DIAGNOSTIC reopen: source=\(coordinator.source != nil), loading=\(coordinator.isLoading), transition=\(host.isTransitioning), visible=\(host.frame != nil), error=\(coordinator.errorMessage ?? "none"), status=\(coordinator.status)")
+            throw error
+        }
         try require(coordinator.source?.itemID == sourceItem.id, "next right-click reopens the same card")
         try require(previewWindow(host)?.isKeyWindow == true, "reopened preview uses the same key appearance as the first opening")
         guard let backgroundClick = NSEvent.mouseEvent(
