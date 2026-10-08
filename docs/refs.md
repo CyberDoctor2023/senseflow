@@ -598,3 +598,5 @@ Apple Doc MCP核对withAnimation(_:completionCriteria:_:completion:)在所有动
 2026-10-08 OCR队列重构复用既有HistoryMediaLoader/Vision接口，未引入新Apple API。Apple Doc MCP的ImageIO技术选择无法解析，CGImageSourceCreateImageAtIndex文档请求返回404；因此本批不据此修改图像解码API。
 
 缩略图等待者取消依据Apple Swift `withTaskCancellationHandler(operation:onCancel:isolation:)`（Apple Doc MCP读取2026-10-08）：取消触发独立handler；actor中注销等待者，不能假定等待共享任务会自动取消该任务。https://developer.apple.com/documentation/swift/withtaskcancellationhandler(operation:oncancel:isolation:)
+
+2026-10-08捕获设置闪退：Apple Doc MCP读取NSMetadataQuery.predicate，入口https://developer.apple.com/documentation/foundation/nsmetadataquery/predicate 。接口概述不足以保证Foundation任意compound都适合Spotlight。隔离真实启动查询复现“NSOrPredicateType NSCompoundPredicate with wrong number (1) of subpredicates”；单类别直接predicate、双类别OR，全部类别/日期边界组合通过实际query.start验证。证据见out/2026-10-08-project-refactor/predicate-start-date.log与risk-stage7.log；不是用fixture模拟外部API。

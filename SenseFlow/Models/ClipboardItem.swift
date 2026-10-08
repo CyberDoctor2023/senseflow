@@ -118,30 +118,6 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
 
     // MARK: - Helper Methods
 
-    /// 获取图片（从内存或文件系统）
-    func getImage() -> NSImage? {
-        if let imageData = imageData {
-            return NSImage(data: imageData)
-        } else if let blobPath = blobPath {
-            // 从文件系统读取大图片
-            let url = URL(fileURLWithPath: blobPath)
-            if let data = try? Data(contentsOf: url) {
-                return NSImage(data: data)
-            }
-        }
-        return nil
-    }
-
-    /// 生成内容的 SHA256 hash（用于去重）
-    static func generateUniqueId(from content: String) -> String {
-        return content.sha256()
-    }
-
-    /// 生成图片数据的 SHA256 hash
-    static func generateUniqueId(from imageData: Data) -> String {
-        return imageData.sha256()
-    }
-
     /// 文本采样（学习 Deck 的 index-limited 技术）
     /// - Parameters:
     ///   - text: 原始文本

@@ -87,3 +87,11 @@ OCR积压改为一个后台消费者，SQLite原件作为工作来源，仅保�
 - 捕获导入在新队列和媒体目录下重新回归，审查刷新频率的实际成本。
 - 核对工程成员、死路径与组合层并发告警；只删除已证实无调用代码，不用unchecked Sendable掩盖所有权。
 - 上述证据具备后才替换运行版并做整体完成审查。
+
+## 第七批实施合同
+
+全项目Swift调用检索确认ClipboardItem.getImage和两个generateUniqueId重载无调用。移除模型上的同步磁盘/解码旧入口，保留已统一的HistoryMediaLoader和存储去重逻辑。捕获验证重新链接当前模块，锁屏时只执行明确标注的存储/媒体/筛选范围，不宣称Quick Look可见流程通过。
+
+桌面本轮已解锁，document-stage7.log全部原生断言通过，capture-stage7-full.log包括Quick Look通过。另发现运行旧开发版PID65990在12:50真实闪退：切换系统捕获设置时NSMetadataQuery拒绝单子项OR。独立启动查询复现NSInvalidArgumentException；仅设置predicate而不start不足以验证。将单类别直接用比较predicate，仅两类别组合OR；验证类别和是否导入旧记录的全部组合。此前运行版不替换，先修复此真实崩溃。
+
+第七批证据：build-stage7-crash-fix.log构建通过；risk-stage7.log全部风险验证通过，包括6种启用类别/日期组合实际Spotlight启动、2种全部关闭不启动。捕获存储及Quick Look回归通过；文档完整原生流程通过（包括此前失败的另卡片按压）。文档同进程Debug暖启动对比与135万UTF16长文打开数据归档至document-metrics-stage7.json，截图document-preview-stage7.png；不宣称该数据是首次长按或Release p95。极端1600行合成滚轮峰值不是正常用户输入的视觉验收，保留待实际体验核对。

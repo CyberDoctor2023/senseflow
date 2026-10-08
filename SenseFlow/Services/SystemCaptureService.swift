@@ -39,16 +39,24 @@ import AppKit
         candidates.removeAll()
         candidateIndex = 0
         query.searchScopes = [NSMetadataQueryLocalComputerScope]
-        var predicates: [NSPredicate] = []
-        if screenshots { predicates.append(NSPredicate(format: "kMDItemIsScreenCapture == 1")) }
-        if recordings { predicates.append(NSPredicate(format: "kMDItemIsScreenRecording == 1")) }
-        let kinds = NSCompoundPredicate(orPredicateWithSubpredicates: predicates)
         let importsExisting = UserDefaults.standard.object(forKey: Self.importExistingKey) as? Bool ?? true
-        query.predicate = importsExisting ? kinds : NSCompoundPredicate(andPredicateWithSubpredicates: [kinds,
-            NSPredicate(format: "kMDItemFSCreationDate >= %@", Date() as NSDate)])
+        query.predicate = Self.capturePredicate(screenshots: screenshots, recordings: recordings,
+                                                since: importsExisting ? nil : Date())
         status = importsExisting ? "收集已有及新增的系统截图和录屏。" : "只收集开启后新保存的系统截图和录屏。"
         query.notificationBatchingInterval = 0.5
         if !query.start() { started = false; errorMessage = "无法开启捕获文件发现，请检查 Spotlight 索引。" }
+    }
+
+    /// Spotlight rejects a single-child OR, even though Foundation can construct it.
+    static func capturePredicate(screenshots: Bool, recordings: Bool, since: Date?) -> NSPredicate? {
+        var predicates: [NSPredicate] = []
+        if screenshots { predicates.append(NSPredicate(format: "kMDItemIsScreenCapture == 1")) }
+        if recordings { predicates.append(NSPredicate(format: "kMDItemIsScreenRecording == 1")) }
+        guard let first = predicates.first else { return nil }
+        let kinds = predicates.count == 1 ? first : NSCompoundPredicate(orPredicateWithSubpredicates: predicates)
+        guard let since else { return kinds }
+        return NSCompoundPredicate(andPredicateWithSubpredicates: [kinds,
+            NSPredicate(format: "kMDItemFSCreationDate >= %@", since as NSDate)])
     }
 
     /// Cancels pending imports before tutorials or shutdown; never mutates original files.

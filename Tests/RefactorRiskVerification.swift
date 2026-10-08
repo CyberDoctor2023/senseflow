@@ -11,6 +11,22 @@ import AppKit
         let directory = URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let store = DatabaseManager(databaseURL: directory.appendingPathComponent("history.sqlite"))
+        let boundaries: [Date?] = [nil, Date()]
+        for screenshots in [false, true] {
+            for recordings in [false, true] {
+                for since in boundaries {
+                    let predicate = SystemCaptureService.capturePredicate(screenshots: screenshots, recordings: recordings, since: since)
+                    if screenshots || recordings {
+                        guard let predicate else { throw Failure("capture predicate missing") }
+                        let query = NSMetadataQuery()
+                        query.searchScopes = [directory.path]
+                        query.predicate = predicate
+                        try require(query.start(), "Spotlight starts the selected capture categories and date boundary")
+                        query.stop()
+                    } else { try require(predicate == nil, "disabled capture categories do not start discovery") }
+                }
+            }
+        }
         let tools = SQLitePromptToolRepository(databaseManager: store)
         let tool = PromptTool(name: "isolated concurrent save", prompt: "keep original input")
         try await withThrowingTaskGroup(of: Void.self) { group in
