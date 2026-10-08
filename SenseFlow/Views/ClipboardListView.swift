@@ -35,6 +35,7 @@ struct ClipboardListView: View {
     @State private var scrollPosition = ScrollPosition(edge: .leading)
     @State private var userIsScrolling = false
     @State private var tutorialViewportWidth: CGFloat = 0
+    @State private var hoveredCardID: Int64?
     @State private var pointerX: CGFloat?
     @AppStorage(HistoryCardMotion.preferenceKey) private var cardMotion = HistoryCardMotion.wave
     @Environment(\.clipboardOnboarding) private var onboarding
@@ -96,8 +97,12 @@ struct ClipboardListView: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         LazyHStack(alignment: .bottom, spacing: cardConfig.cardSpacing) {
                             ForEach(viewModel.items) { item in
-                                ClipboardCardView(item: item, actions: viewModel.actions, thumbnails: viewModel.thumbnails)
-                                    .modifier(HistoryPointerWave(pointerX: pointerX, strength: cardMotion == .wave ? 1 : 0,
+                                ClipboardCardView(item: item, actions: viewModel.actions, thumbnails: viewModel.thumbnails,
+                                    onPointerPresenceChanged: { inside in
+                                        if inside { hoveredCardID = item.id }
+                                        else if hoveredCardID == item.id { hoveredCardID = nil }
+                                    })
+                                    .modifier(HistoryPointerWave(pointerX: pointerX, strength: cardMotion == .wave && hoveredCardID != nil ? 1 : 0,
                                         reduceMotion: reduceMotion || cardMotion == .classic))
                                     .id(item.id)
                                     .anchorPreference(key: OnboardingAnchors.self, value: .bounds) { anchor in
@@ -118,7 +123,7 @@ struct ClipboardListView: View {
                     .onContinuousHover { phase in
                         switch phase {
                         case .active(let location): pointerX = location.x
-                        case .ended: pointerX = nil
+                        case .ended: pointerX = nil; hoveredCardID = nil
                         }
                     }
                     .contentMargins(.horizontal, cardConfig.contentInset, for: .scrollContent)
@@ -370,6 +375,7 @@ private struct HistoryPointerWave: ViewModifier {
             let lift: CGFloat = elevation(geometry)
             return effect.scaleEffect(1 + lift * 0.02, anchor: .bottom).offset(y: -12 * lift)
         }
+        .animation(.easeOut(duration: reduceMotion ? 0 : Constants.SelectionFeedback.duration), value: strength)
     }
     private func elevation(_ geometry: GeometryProxy) -> CGFloat {
         guard !reduceMotion, let pointerX else { return 0 }

@@ -6,6 +6,7 @@ struct ClipboardCardView: View {
     let item: ClipboardItem
     let actions: HistoryActionCoordinator
     let thumbnails: ClipboardThumbnailLoader
+    var onPointerPresenceChanged: ((Bool) -> Void)? = nil
     @Environment(\.clipboardOnboarding) private var onboarding
     @Environment(\.displayScale) private var scale
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -41,9 +42,12 @@ struct ClipboardCardView: View {
             actions.setDragging(active)
         }, onEnter: { bounds in
             hovered = true
+            onPointerPresenceChanged?(true)
             actions.documents.pointerEntered(item, anchor: bounds)
         }, onLeave: {
-            hovered = false; actions.documents.pointerLeft(item.id)
+            hovered = false
+            onPointerPresenceChanged?(false)
+            actions.documents.pointerLeft(item.id)
         }, onPressChanged: { pressed = $0 }, onSelect: {
             actions.select(item)
         }, onPreview: { bounds in
@@ -62,7 +66,7 @@ struct ClipboardCardView: View {
         .contentShape(RoundedRectangle(cornerRadius: Constants.Card.cornerRadius))
         .focusable()
         .focusEffectDisabled()
-        .onDisappear { pressed = false }
+        .onDisappear { pressed = false; onPointerPresenceChanged?(false) }
         .onChange(of: actions.documents.isLoading) { _, loading in
             if !loading { pressed = false }
         }
