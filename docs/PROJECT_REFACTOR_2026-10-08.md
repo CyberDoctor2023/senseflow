@@ -153,3 +153,5 @@ OCR诊断：只读隔离数据库确认403已识别、405尚无结果，404已�
 第十三批：build-stage13.log通过，risk-stage13.log捕获TextRecognition.CRImageReaderError code1并同样未通过。对比独立ImageIO解码成功与生产NSImage转换失败，改用ImageIO直接解码原始Data，不改变Vision语言/识别级别、不重试掩盖错误。删除无外部调用的NSImage/CGImage公开转发重载，保留核心识别私有入口。Apple Doc MCP选中Image I/O但symbol返回404，官方网页仅提供JS入口，记录检索限制；本次选择基于同原件实测，构建和原风险断言仍须验证。
 
 第十四批：build-stage14.log通过，但原risk-stage14.log仍出现相同CRImageReaderError code1，说明改用ImageIO尚不能解决识别失败，前一轮解码路径假设未被证实。不宣称修复通过；ImageIO保留作为移除AppKit后台图像转换的统一原件解码路径，继续用独立连续两张Vision请求区分多请求状态与数据库消费行为。当前两个原生诊断进程保留可观测日志与句柄，不无证据重启。
+
+第十五批诊断：独立连续ImageIO/Vision请求第一张15.048s成功，第二张0.032s报e5rtError（precompiled compute operation创建失败，13），无应用数据库/队列参与。官方VNRequest.setComputeDevice(_:for:)与supportedComputeStageDevices接口经Apple Doc MCP和当前SDK核实；隔离CPU设备选择实验同样第二张失败（vision-cpu-stage15.log），没有把此无效设备切换写入产品。继续独立autoreleasepool生命周期实验，保留原始识别要求。
