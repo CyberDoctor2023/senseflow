@@ -15,8 +15,8 @@
 | 删除闲置路径与工程同步 | Git删除记录、工程Sources、移除两个闲置tracing products；build-stage25.log | 已落实，保留实际HTTP tracing |
 | 鼠标滚轮恢复、两套动效独立 | stage19实际输入日志、用户“现在好了啊”、scroll-stage19.log；classic/wave独立设置 | 滚轮已实机确认 |
 | 起伏仅由卡片边界激活 | 3979d5c；build-stage21.log、stage21实际启动 | 视觉轨迹未验收 |
-| 录屏长按系统快速预览 | 单/双面板隔离QLPreviewPanel可见断言通过；主程序尚无预览入口日志 | 未完成，不能由隔离结果宣称主程序修好 |
-| 构建、运行与交付一致 | stage24诊断版PID50350；stage25构建通过但尚未部署；delivery-stage21与manifest | 交付尚需最终同步并移除临时诊断 |
+| 录屏长按系统快速预览 | 单/双面板隔离QLPreviewPanel可见断言通过；用户真实长按已记录入口/URL成功，stage27改用唯一原生会话，待实机呈现确认 | 未完成，不能由隔离结果宣称主程序修好 |
+| 构建、运行与交付一致 | stage27运行版PID64055；原生会话构建/隔离验证通过；delivery-stage21为旧暂存 | 交付尚需最终同步并移除临时诊断 |
 
 ## 性能证据的范围
 
@@ -26,7 +26,7 @@
 
 - 当前生产编译仍为Swift5；三类既有非Sendable持有诊断未用unchecked Sendable掩盖，未扩大为全项目Swift6迁移。
 - 日志与隔离数据位于out/2026-10-08-project-refactor；用户历史、录屏原件、授权、密钥和草稿未用于测试或删除。
-- 当前HistoryActionCoordinator中的Debug录屏日志为临时未提交诊断，定位后必须删除并重新构建。运行包有备份，禁止覆盖运行进程或强制丢弃编辑草稿。
+- 临时Debug录屏日志已在stage27删除并重新构建；原生录屏会话与窗口池解耦。运行包有备份，禁止覆盖运行进程或强制丢弃编辑草稿。
 - Apple文档查询受MCP索引匹配限制时采用官方来源并记录于refs.md；官方Xcode bridge不可用，构建使用已记录的xcodebuild替代链。
 
 最终验收还需要实际录屏长按入口与系统窗口呈现证据、起伏边界视觉反馈、无诊断运行包及最终源码/交付清单核对。本表不勾选总体完成。

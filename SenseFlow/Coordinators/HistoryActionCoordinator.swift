@@ -1,12 +1,21 @@
 import Foundation
 import Observation
 import AppKit
+import Quartz
 
 /// Explicit preview and paste intents share detail loading, never clipboard side effects.
 @MainActor @Observable final class HistoryActionCoordinator {
     private(set) var errorMessage: String?
     private(set) var isDragging = false
-    var quickLookURL: URL?
+    var quickLookURL: URL? {
+        didSet {
+            if let quickLookURL { recordingPreview.present(quickLookURL) }
+            else { recordingPreview.dismiss() }
+        }
+    }
+    @ObservationIgnored private lazy var recordingPreview = RecordingQuickLookSession { [weak self] in
+        self?.quickLookURL = nil
+    }
     private var previewTask: Task<Void, Never>?
     let documents: DocumentPreviewCoordinator
     private let repository: HistoryContentRepository
@@ -96,4 +105,41 @@ import AppKit
             throw error
         }
     }
+}
+
+/// Owns the system recording preview independently of the history view/window pool.
+@MainActor private final class RecordingQuickLookSession: NSObject, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
+    private var url: URL?
+    private weak var panel: QLPreviewPanel?
+    private let onClose: () -> Void
+
+    init(onClose: @escaping () -> Void) { self.onClose = onClose }
+
+    func present(_ url: URL) {
+        guard let panel = QLPreviewPanel.shared() else { return }
+        self.url = url
+        self.panel = panel
+        panel.dataSource = self
+        panel.delegate = self
+        panel.reloadData()
+        panel.currentPreviewItemIndex = 0
+        panel.level = .popUpMenu
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+    }
+
+    func dismiss() {
+        url = nil
+        panel?.orderOut(nil)
+        panel?.dataSource = nil
+        panel?.delegate = nil
+        panel = nil
+    }
+
+    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int { url == nil ? 0 : 1 }
+    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> (any QLPreviewItem)! {
+        guard index == 0, let url else { return nil }
+        return url as NSURL
+    }
+    func windowWillClose(_ notification: Notification) { onClose() }
 }

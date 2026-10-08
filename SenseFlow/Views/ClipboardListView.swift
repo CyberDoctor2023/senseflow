@@ -8,7 +8,6 @@
 import SwiftUI
 import Combine
 import AppKit
-import QuickLook
 
 /// 剪贴板列表视图（横向滚动）
 ///
@@ -59,7 +58,6 @@ struct ClipboardListView: View {
     }
 
     var body: some View {
-        @Bindable var actions = viewModel.actions
         // 直接在内容上应用 glassEffect，而不是分离的背景层
         VStack(spacing: 0) {
             // Card scroll area
@@ -176,7 +174,6 @@ struct ClipboardListView: View {
                 Text(error).font(.pingFang(.caption)).foregroundStyle(.red).padding(8).background(.regularMaterial)
             }
         }
-        .quickLookPreview($actions.quickLookURL)
         .contentShape(Rectangle())
         .task {
             if loadOnAppear { await viewModel.loadItems() }

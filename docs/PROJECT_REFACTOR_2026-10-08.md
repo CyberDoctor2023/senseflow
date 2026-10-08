@@ -205,3 +205,7 @@ OCR诊断：只读隔离数据库确认403已识别、405尚无结果，404已�
 第二十五批证据：build-stage25.log与document-stage25.log完整原生回归通过。首次请求后立即pointerLeft仍成功呈现，关闭再次打开、替换、原文/草稿、连续滚动与OCR错误断言保持。仅一次通过不足以宣称间歇故障根因已证实。生产pointerLeft移除旧候选取消，所有显式取消入口保持；当前运行仍为stage24诊断版，stage25未部署，临时录屏诊断仍待删除。
 
 第二十六批诊断证据：生产WindowFactory创建A/B两窗口共享同一HistoryActionCoordinator，两份ClipboardListView都绑定quickLookURL。隔离VerifyCapturePair.swift复现一个可见生产面板及一个隐藏面板共享模型，capture-pair-stage26.log仍通过原生QLPreviewPanel可见及媒体/原件断言，不能以双绑定为录屏失败根因。未替换预览实现、未删除系统路径来掩盖问题；真实入口日志仍等待物理事件证据。
+
+第二十七批实施合同：用户物理按压日志recording-physical-stage24.log确认PID50350于14:45:38收到录屏intent并绑定URL，applicationActive=true；排除触发/详情失败。将SwiftUI列表级quickLookPreview替换为HistoryActionCoordinator拥有的唯一原生QLPreviewPanel会话，显式数据源、显示和关闭状态；删除被替代modifier，不并存fallback。仍使用系统Quick Look、不增加播放器、不改原件；外部收起清空会话，系统关闭清空绑定。官方MCP QuickLookUI选择失败但QLPreviewPanel路径可读，确认shared/dataSource/reloadData/delegate API。完成条件：构建、原生录屏控制验证及真实运行呈现；临时日志删除。
+
+第二十七批证据：build-stage27.log通过。capture-pair-stage27异步main未运行完整AppKit事件循环，退出时没有执行最后QL断言，不计通过；改为NSApplication.run驱动Task，capture-runloop-stage27.log完整通过原生QLPreviewPanel可见、原件/去重/历史/缩略图/SQL筛选。删除所有临时录屏诊断和列表quickLookPreview绑定，唯一原生会话负责dataSource/delegate/显示/关闭。正常退出诊断版后备份SenseFlow-before-stage27.app，新版签名验证并启动PID64055，尚待用户真实长按呈现确认；不将隔离验证等同实机体验。
