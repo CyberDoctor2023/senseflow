@@ -85,21 +85,6 @@ class NotificationService {
         return isAuthorized(settings.authorizationStatus)
     }
 
-    /// 检查通知权限状态（同步属性）
-    /// - Note: 使用缓存状态，可能不是最新值
-    var hasPermission: Bool {
-        var status: UNAuthorizationStatus = .notDetermined
-        let semaphore = DispatchSemaphore(value: 0)
-
-        center.getNotificationSettings { settings in
-            status = settings.authorizationStatus
-            semaphore.signal()
-        }
-
-        semaphore.wait()
-        return isAuthorized(status)
-    }
-
     /// 显示通知
     /// - Parameters:
     ///   - title: 标题
