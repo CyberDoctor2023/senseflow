@@ -71,8 +71,8 @@ a {
   padding: 0 4vw;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   background: rgba(247, 247, 244, 0.72);
-  -webkit-backdrop-filter: blur(28px) saturate(130%);
-  backdrop-filter: blur(28px) saturate(130%);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
 }
 
 .brand {
@@ -205,30 +205,6 @@ a {
     radial-gradient(circle at 78% 72%, rgba(0, 0, 0, 0.08), transparent 24%),
     linear-gradient(112deg, #fafafa 0%, #e7e7e5 48%, #f8f8f7 100%);
   isolation: isolate;
-}
-
-.ambient {
-  position: absolute;
-  z-index: -1;
-  width: 560px;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  opacity: 0.4;
-  filter: blur(90px);
-  transform: translateZ(0);
-  pointer-events: none;
-}
-
-.ambient-one {
-  top: -310px;
-  left: 18%;
-  background: rgba(255, 255, 255, 0.98);
-}
-
-.ambient-two {
-  right: 8%;
-  bottom: -420px;
-  background: rgba(0, 0, 0, 0.09);
 }
 
 .clipboard-shell {
@@ -374,8 +350,8 @@ a {
     inset 0 1px 0 rgba(255, 255, 255, 0.96),
     inset 0 -1px 0 rgba(0, 0, 0, 0.07),
     0 24px 80px rgba(0, 0, 0, 0.13);
-  -webkit-backdrop-filter: blur(28px) saturate(135%);
-  backdrop-filter: blur(28px) saturate(135%);
+  -webkit-backdrop-filter: blur(16px) saturate(135%);
+  backdrop-filter: blur(16px) saturate(135%);
   outline: none;
 }
 
@@ -437,14 +413,8 @@ a {
     inset 1px 0 0 rgba(255, 255, 255, 0.46),
     inset 0 -1px 0 rgba(0, 0, 0, 0.08),
     0 12px 32px rgba(0, 0, 0, 0.12);
-  -webkit-backdrop-filter: blur(22px) saturate(135%);
-  backdrop-filter: blur(22px) saturate(135%);
-  transform: translateZ(0);
   transform-origin: center;
-  transition:
-    transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 280ms ease-in-out,
-    background 280ms ease-in-out;
+  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .clip-card[hidden] {
@@ -646,6 +616,19 @@ img.app-dot {
   animation-play-state: paused;
 }
 
+.product-stage.is-offscreen .history-track,
+.product-stage.is-hidden .history-track,
+.product-stage.is-pinned .history-track {
+  animation-play-state: paused;
+  will-change: auto;
+}
+
+.history-track.is-static {
+  animation: none;
+  transform: none;
+  will-change: auto;
+}
+
 
 .features {
   padding: 156px 6vw 130px;
@@ -839,4 +822,5 @@ img.app-dot {
   }
 
   .history-window::-webkit-scrollbar { display: none; }
+  .history-track { animation: none !important; will-change: auto; }
 }

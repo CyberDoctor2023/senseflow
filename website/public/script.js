@@ -44,4 +44,10 @@ const visibility = new IntersectionObserver(([entry]) => {
 }, { threshold: 0.05 });
 visibility.observe(stage);
 
+const updatePageVisibility = () => {
+  stage.classList.toggle('is-hidden', document.hidden);
+};
+document.addEventListener('visibilitychange', updatePageVisibility);
+updatePageVisibility();
+
 cloneVisibleCards();
