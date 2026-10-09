@@ -66,6 +66,18 @@ import AppKit
                     "closing tutorial preview keeps history visible at its original position")
         try require(NSApp.keyWindow?.isVisible == true && NSApp.keyWindow?.windowNumber != number,
                     "closing tutorial preview restores focus to the tutorial workspace")
+        documents.preview(article, anchor: NSRect(x: frame.midX - 120, y: frame.minY + 40, width: 240, height: 240), pinOnOpen: false)
+        for _ in 0..<100 {
+            if documents.source != nil && tour.hasPreview { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        try require(documents.source != nil && tour.hasPreview, "preview reopens before external dismissal")
+        session.outsideApplicationActivated()
+        try await Task.sleep(for: .milliseconds(800))
+        session.outsideApplicationActivated()
+        try require(documents.source == nil && !tour.hasPreview && tour.step == .filters
+                    && session.isHistoryVisible && session.historyFrame == frame,
+                    "outside activation closes only preview and repeated notifications retain tutorial history")
         await session.historyModel.selectType(.text)
         tour.categorySelected()
         try await Task.sleep(for: .milliseconds(1700))

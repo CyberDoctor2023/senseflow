@@ -161,8 +161,11 @@ private struct ContextualOnboardingOverlay: View {
                     Text(title).font(.pingFang(size: 20, weight: .semibold))
                     Spacer()
                 }
-                HStack(spacing: 20) {
-                }.font(.pingFang(size: 11)).padding(.top, 5)
+                if step == .filters && anchors[.preview] == nil {
+                    Text("更多类别，可在设置中选择")
+                        .font(.pingFang(size: 14))
+                        .foregroundStyle(.secondary)
+                }
             }
             .frame(width: width, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)

@@ -179,6 +179,14 @@ import QuartzCore
         documents.historyShown()
     }
     var isVisible: Bool { wantsVisible || launchPanel?.isVisible == true }
+    /// Outside clicks dismiss the preview without dismissing its tutorial step.
+    func outsideApplicationActivated() {
+        if tour.step == .filters && wantsVisible {
+            _ = documents.dismissPointerPreview()
+            return
+        }
+        hide()
+    }
     func hide() {
         stopTeaser()
         if visibility == .teasing { panel.orderOut(nil); visibility = .hidden }

@@ -363,7 +363,7 @@ import SwiftUI
             return
         }
         if !onboarding.isComplete {
-            if outsideApp { tutorial?.hide() }
+            if outsideApp { tutorial?.outsideApplicationActivated() }
             return
         }
         // System Quick Look owns its own key window outside our registered workspace.
