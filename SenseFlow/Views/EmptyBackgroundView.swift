@@ -118,8 +118,8 @@ struct EmptyBackgroundView: View {
                             .glassEffectTransition(.matchedGeometry)
                             .modifier(CategorySurfaceFeedback())
                             .frame(width: config.buttonSize, height: config.buttonSize)
-                            .animation(.easeOut(duration: reduceMotion ? 0 : Constants.SelectionFeedback.duration), value: viewModel.selectedType)
-                            .animation(.easeOut(duration: reduceMotion ? 0 : Constants.SelectionFeedback.duration), value: hoveredHint)
+                            .animation(reduceMotion ? nil : .smooth(duration: Constants.SelectionFeedback.duration), value: viewModel.selectedType)
+                            .animation(reduceMotion ? nil : .smooth(duration: Constants.SelectionFeedback.duration), value: hoveredHint)
                     }
                 }
 
@@ -149,8 +149,8 @@ struct EmptyBackgroundView: View {
                     .background(config.material, in: Circle())
                     .modifier(CategorySurfaceFeedback())
                     .frame(width: config.buttonSize, height: config.buttonSize)
-                    .animation(.easeOut(duration: reduceMotion ? 0 : Constants.SelectionFeedback.duration), value: viewModel.selectedType)
-                    .animation(.easeOut(duration: reduceMotion ? 0 : Constants.SelectionFeedback.duration), value: hoveredHint)
+                    .animation(reduceMotion ? nil : .smooth(duration: Constants.SelectionFeedback.duration), value: viewModel.selectedType)
+                    .animation(reduceMotion ? nil : .smooth(duration: Constants.SelectionFeedback.duration), value: hoveredHint)
             }
 
             Spacer()
@@ -256,7 +256,7 @@ private struct CategorySurfaceFeedback: ViewModifier {
     func body(content: Content) -> some View {
         content
             .scaleEffect(reduceMotion || !enlarged ? 1 : 1.10)
-            .animation(.easeOut(duration: reduceMotion ? 0 : enlarged ? 0.12 : 0.2), value: enlarged)
+            .animation(reduceMotion ? nil : .smooth(duration: enlarged ? 0.12 : 0.2), value: enlarged)
             .simultaneousGesture(DragGesture(minimumDistance: 0).updating($pressed) { _, state, _ in state = true })
             .task(id: pressed) {
                 if pressed { enlarged = true }

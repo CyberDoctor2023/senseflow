@@ -446,7 +446,7 @@ private struct HistoryPointerWave: ViewModifier {
             let lift: CGFloat = elevation(geometry)
             return effect.scaleEffect(1 + lift * 0.02, anchor: .bottom).offset(y: -12 * lift)
         }
-        .animation(reduceMotion ? nil : .snappy(duration: Constants.SelectionFeedback.duration), value: strength)
+        .animation(reduceMotion ? nil : .smooth(duration: Constants.SelectionFeedback.duration), value: strength)
     }
     private func elevation(_ geometry: GeometryProxy) -> CGFloat {
         guard !reduceMotion, let pointerX else { return 0 }

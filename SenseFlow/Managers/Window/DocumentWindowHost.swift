@@ -133,7 +133,7 @@ enum DocumentCloseChoice { case save, keepDraft, discard, cancel }
         startDismissMonitoring()
         NSAnimationContext.runAnimationGroup { context in
             context.duration = reducedMotion ? 0 : 0.32
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             window.animator().setFrame(target, display: true)
         } completionHandler: { [weak self] in
             guard let self, self.transitionID == token else { return }

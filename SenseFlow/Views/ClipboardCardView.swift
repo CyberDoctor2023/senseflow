@@ -33,9 +33,9 @@ struct ClipboardCardView: View {
         .clipShape(.rect(cornerRadius: Constants.Card.cornerRadius * cardScale))
         .frame(width: Constants.Card.width, height: Constants.Card.height, alignment: .center)
         .environment(\.appearsActive, true)
-        .animation(reduceMotion ? nil : .snappy(duration: Constants.SelectionFeedback.duration), value: hovered)
-        .animation(reduceMotion ? nil : .snappy(duration: Constants.SelectionFeedback.duration), value: isPreviewSource)
-        .animation(reduceMotion ? nil : .smooth(duration: pressed ? 0.45 : 0.2), value: pressed)
+        .animation(reduceMotion ? nil : .smooth(duration: Constants.SelectionFeedback.duration), value: hovered)
+        .animation(reduceMotion ? nil : .smooth(duration: Constants.SelectionFeedback.duration), value: isPreviewSource)
+        .animation(reduceMotion ? nil : .easeInOut(duration: pressed ? 0.45 : 0.2), value: pressed)
         .background(CardPointerRegion(isPreviewSource: isPreviewSource, loadDragItem: {
             try await actions.makeDragPasteboardItem(item)
         }, onDragStateChanged: { active in
