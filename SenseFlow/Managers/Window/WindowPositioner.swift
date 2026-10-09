@@ -44,19 +44,11 @@ final class WindowPositioner {
         let targetScreen = detectActiveScreen() ?? NSScreen.main ?? NSScreen.screens.first
         guard let screen = targetScreen else { return }
 
-        // 优化：只有屏幕变化时才调用 setFrame（避免不必要的重绘）
-        if screen === lastScreen {
-            // 同一屏幕，只调整位置（快速路径）
-            let newFrame = calculateWindowFrame(for: screen, windowHeight: windowHeight)
-            if window.frame.origin != newFrame.origin {
-                window.setFrameOrigin(newFrame.origin)
-            }
-        } else {
-            // 不同屏幕，调整尺寸和位置（完整路径）
-            let newFrame = calculateWindowFrame(for: screen, windowHeight: windowHeight)
+        let newFrame = calculateWindowFrame(for: screen, windowHeight: windowHeight)
+        if window.frame != newFrame {
             window.setFrame(newFrame, display: true, animate: false)
-            lastScreen = screen
         }
+        lastScreen = screen
     }
 
     /// 清除屏幕缓存（用于屏幕配置变化时）

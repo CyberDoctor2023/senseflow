@@ -251,7 +251,7 @@ final class NSPasteboardAdapter: ClipboardReader, ClipboardWriter {
 
             case .image(let data):
                 // 写入图片（TIFF 格式）
-                pasteboard.setData(data, forType: .tiff)
+                if let image = NSImage(data: data) { pasteboard.writeObjects([image]) }
 
             case .file(let url):
                 // 写入文件 URL

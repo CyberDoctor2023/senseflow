@@ -256,17 +256,6 @@ final class PromptToolCoordinatorIntegrationTests: XCTestCase {
 
     // MARK: - Tests: Restore Default Tools
 
-    func test_restoreDefaultTools_callsRepository() async throws {
-        // 注意：这个测试验证当前的委托实现
-        // 当完整实现后，需要更新这个测试
-
-        // Act
-        try await sut.restoreDefaultTools()
-
-        // Assert
-        // 当前实现委托给 PromptToolManager，所以这里不验证 mock 调用
-        // 这是一个已知的 TODO
-    }
 }
 
 final class MockPromptToolHotKeyCoordinator: PromptToolHotKeyHandling, @unchecked Sendable {

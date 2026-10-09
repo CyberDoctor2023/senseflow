@@ -431,3 +431,184 @@
 - **应用**: WindowLifecycle 需添加 isHiding 标志，避免动画期间状态冲突
 
 ---
+
+## 2026-10-06：重构性能依据（3 条）
+
+1. [Apple：Optimize SwiftUI performance with Instruments](https://developer.apple.com/videos/play/wwdc2025/306/)
+   - SwiftUI instrument 可定位长 body 更新及多余更新，实施前后同设备采样；不把现有 60fps 宣称当证据。
+2. [Apple：drawingGroup](https://developer.apple.com/documentation/swiftui/view/drawinggroup(opaque:colormode:))；[ImageIO 像素上限](https://developer.apple.com/documentation/imageio/kcgimagesourcethumbnailmaxpixelsize)；[图像最佳实践](https://devstreaming-cdn.apple.com/videos/wwdc/2018/219mybpx95zm9x/219/219_image_and_graphics_best_practices.pdf)
+   - drawingGroup 离屏合成需 A/B 测量；缩略图按显示像素上限创建，原图按需。具体 API 参数实施前再次核验。
+3. [SQLite.swift 官方文档](https://github.com/stephencelis/SQLite.swift/blob/master/Documentation/Index.md)
+   - 显式 select 与 limit 支持摘要/分页；完整业务事务仍需单一并发所有者。Context7 命中此来源。
+
+检索限制及工具失败记录见 `REFACTOR_PLAN_2026-10-06.md`。以上替代旧无测量依据的速度百分比推断。
+
+## 2026-10-06：OCR 闪退研究
+
+1. [Apple CheckedContinuation](https://developer.apple.com/documentation/swift/checkedcontinuation)：仅可恢复一次。
+2. [Swift 标准库 CheckedContinuation](https://github.com/swiftlang/swift/blob/main/stdlib/public/Concurrency/CheckedContinuation.swift)：重复恢复触发 fatalError。Context7 已查证。
+3. [Apple Vision perform](https://developer.apple.com/documentation/vision/vnimagerequesthandler/perform(_:))；[同步请求示例](https://developer.apple.com/documentation/vision/detecting-objects-in-still-images)：由后台 worker 执行后单次归集结果。Apple Doc MCP 已查询 perform。
+
+实际报告、推断边界和未验证项见 `CRASH_REVIEW_2026-10-06.md`。
+
+## 2026-10-06：原生长文本编辑设计（3 组）
+
+1. [Apple NSTextView](https://developer.apple.com/documentation/appkit/nstextview)、[TextKit viewport](https://developer.apple.com/documentation/appkit/nstextviewportlayoutcontroller)：原生编辑/撤销/查找与 viewport 布局；Apple Doc MCP 已查。
+2. [NSPanel 按需 key](https://developer.apple.com/documentation/appkit/nspanel/becomeskeyonlyifneeded)、[windowShouldClose](https://developer.apple.com/documentation/appkit/nswindowdelegate/windowshouldclose(_:))：hover 与编辑的焦点/关闭分层；实际体验需 integration 验证。
+3. [NSViewRepresentable.makeCoordinator](https://developer.apple.com/documentation/swiftui/nsviewrepresentable/makecoordinator())：native 事件桥接 SwiftUI；Context7 已查。不要每个 updateNSView 替换全文。
+
+具体研究与本地落点见 `design/LONG_TEXT_DOCUMENT_PREVIEW.md`。拟定 API/schema 非已实现签名。
+
+## 2026-10-06：实施核验
+
+Apple Doc MCP 查询了 [NSTextView TextKit 2初始化](https://developer.apple.com/documentation/appkit/nstextview/init(usingtextlayoutmanager:))、[NSPanel 按需key](https://developer.apple.com/documentation/appkit/nspanel/becomeskeyonlyifneeded)、[SwiftUI滚动阶段](https://developer.apple.com/documentation/swiftui/view/onscrollphasechange(_:))；滚动取消候选采用工程15.6部署目标支持的API。hasMarkedText 页面首次路径查询404，改查官方 [NSTextInputClient.hasMarkedText](https://developer.apple.com/documentation/appkit/nstextinputclient/hasmarkedtext())，并在真实AppKit集成验证中核实。SQLite.swift 的事务、绑定SQL与投影表达式经Context7指向[维护者文档](https://github.com/stephencelis/SQLite.swift/blob/master/Documentation/Index.md)，再以隔离真实SQLite验证1025字符投影和事务行为。
+
+官方Xcode桥接自建客户端最初超时；用户批准后使用正式Xcode MCP成功发现工作区并构建，随后因缺少证书改用无签名本地构建。工具失败与验收限制见 `DOCUMENT_IMPLEMENTATION_VALIDATION_2026-10-06.md`。
+
+### 2026-10-06：取消固定/应用切换
+
+Apple Doc MCP检索NSWorkspace.didActivateApplicationNotification未返回匹配符号，改用Apple官方[didActivateApplicationNotification](https://developer.apple.com/documentation/appkit/nsworkspace/didactivateapplicationnotification)。监听NSWorkspace通知中心的应用激活，与窗口失焦共同评估自动隐藏；进程ID排除自身。
+
+### 2026-10-06：预览透明Liquid Glass
+
+Apple Doc MCP确认[Glass.clear](https://developer.apple.com/documentation/swiftui/glass/clear)是macOS26+的透明玻璃变体。预览改用此变体并清除window container背景，保持appearsActive外观；不通过hover抢key focus达到玻璃活跃外观。
+
+- 2026-10-06：Apple Doc MCP 查询 NSSound 成功；使用 named sound、volume、play，预览确认后播放一次。https://developer.apple.com/documentation/appkit/nssound
+
+- 2026-10-06：Apple Doc MCP 成功查询 matchedGeometryEffect 与 NSAnimationContext。公开 API 提供同步几何、duration/timingFunction/completionHandler；不能据此断言 Photos 的私有实现。本工程独立 AppKit 窗口保留 NSAnimationContext，消除过渡时视图替换。https://developer.apple.com/documentation/swiftui/view/matchedgeometryeffect(id:in:properties:anchor:issource:) https://developer.apple.com/documentation/appkit/nsanimationcontext
+
+- Apple Doc MCP 查询 RunLoop.Mode.common 成功：包含多个运行模式的伪模式。本轮退出检测 Timer 注册 common modes，避免普通模式暂停影响关闭。https://developer.apple.com/documentation/foundation/runloop/mode/common
+
+- Apple Doc MCP 查询 focusEffectDisabled 成功，macOS14+ 可禁用默认焦点光环。本轮移除卡片蓝色边框，同时禁用系统 focus ring，保留键盘焦点行为。https://developer.apple.com/documentation/swiftui/view/focuseffectdisabled(_:)
+
+- 2026-10-06：Apple Doc MCP 查询 horizontalScrollElasticity 与 Animation.spring(response:dampingFraction:blendDuration:) 成功。原生横向启用 elasticity，转换鼠标滚轮以有界内容位移加 spring 回零。https://developer.apple.com/documentation/appkit/nsscrollview/horizontalscrollelasticity https://developer.apple.com/documentation/swiftui/animation/spring(response:dampingfraction:blendduration:)
+
+- 2026-10-06：NSView/rightMouseDown MCP 查询404，Apple 官方 NSResponder 页面返回 JavaScript 壳；随后 Apple Doc MCP 成功查询 NSEvent.addLocalMonitorForEvents。右键实现使用仅本应用窗口、卡片边界内的本地监控，不需要系统权限。https://developer.apple.com/documentation/appkit/nsevent/addlocalmonitorforevents(matching:handler:)
+
+- 2026-10-06：Apple Doc MCP 成功查询 NSVisualEffectView（选择 AppKit），文档确认 material、blendingMode、state 控制材质、混合和窗口活跃状态；具体 enum 子路径查询404。预览/编辑共享 material.popover、behindWindow、active 原生背景，避免只靠 clear 玻璃保持可读性。https://developer.apple.com/documentation/appkit/nsvisualeffectview
+- 2026-10-06：Apple Doc MCP 成功查询 EnvironmentValues.appearsActive：控制视图/样式对 active/inactive 外观的偏好。预览和编辑统一 false；该偏好不能作为像素相同的证明。https://developer.apple.com/documentation/swiftui/environmentvalues/appearsactive
+### 2026-10-07：玻璃焦点背景
+
+Apple Doc MCP查询[EnvironmentValues.appearsActive](https://developer.apple.com/documentation/swiftui/environmentvalues/appearsactive)：仅描述视图/样式应偏好活跃外观，不承诺冻结原生玻璃焦点变化。用户实测固定true/false仍变透，因此预览持久底色不能只依赖该环境值。
+### 2026-10-07：首次预览底色解析
+
+Apple Doc MCP查询[NSAppearance.performAsCurrentDrawingAppearance](https://developer.apple.com/documentation/appkit/nsappearance/performascurrentdrawingappearance(_:))：在指定appearance的绘制上下文执行闭包。预览底色据此在创建时解析为RGB，阅读/编辑复用固定值；这不是冻结原生玻璃所有像素的API。
+### 2026-10-07：鼠标持续按住判定
+
+Apple Doc MCP查询[NSEvent.pressedMouseButtons](https://developer.apple.com/documentation/appkit/nsevent/pressedmousebuttons)：提供当前按住按钮的索引状态。长按定时器在阈值时核对该状态与实际鼠标位置，避免松开后仍执行。事件监视与common RunLoop规则沿用已有官方引用。
+### 2026-10-07：边缘玻璃与原生横向回弹
+
+Apple Doc MCP成功查询[scrollEdgeEffectHidden](https://developer.apple.com/documentation/swiftui/view/scrolledgeeffecthidden(_:for:))（macOS26+）和[horizontalScrollElasticity](https://developer.apple.com/documentation/appkit/nsscrollview/horizontalscrollelasticity)。NSEvent initializer路径MCP返回404，改用Apple官方[NSEvent](https://developer.apple.com/documentation/appkit/nsevent)确认cgEvent initializer、precise deltas与momentumPhase；[scrollWheel](https://developer.apple.com/documentation/appkit/nsresponder/scrollwheel(with:))是接收滚动事件的公开入口。项目仅在自己的滚动视图中转轴，不生成系统级输入。
+### 2026-10-07：锁定卡片原生拖动
+
+Apple Doc MCP确认[beginDraggingSession](https://developer.apple.com/documentation/appkit/nsview/begindraggingsession(with:event:source:))启动原生拖动、[NSDraggingItem initializer](https://developer.apple.com/documentation/appkit/nsdraggingitem/init(pasteboardwriter:))使用指定pasteboard内容、[animatesToStartingPositionsOnCancelOrFail](https://developer.apple.com/documentation/appkit/nsdraggingsession/animatestostartingpositionsoncancelorfail)控制取消/失败回位。本轮采用copy操作和拖动局部pasteboard，不向通用剪贴板写入；目标是否接收取决于目标控件支持的标准类型。
+# 2026-10-07 双击地球键
+
+**最终决策：撤销。** 用户实际体验确认主动拦截导致语音输入法不能使用，因此删除整个地球键处理路径，默认恢复 Cmd+Shift+V。下面的查询与试验记录仅为历史证据，不再描述当前行为。地球键交还系统，不尝试重新投递事件模拟系统单按。
+
+- 用户实测指出 NSEvent 旁听没有阻止切换输入法；实际启动日志还显示仍注册 ⇧⌘V。后续修正使用主动 CoreGraphics tap，失败需明确报告。Apple Doc MCP `choose_technology(CoreGraphics)` 未找到技术，但直接 `CGEvent.tapCreate`、`CGEventTapCallBack` 查询成功；[官方 tapCreate](https://developer.apple.com/documentation/coregraphics/cgevent/tapcreate(tap:place:options:eventsofinterest:callback:userinfo:)) 和 [tap location](https://developer.apple.com/documentation/coregraphics/cgeventtaplocation/cghideventtap) 描述早期 HID 位置与返回 nil 的失败边界。当前设备实际创建结果优先记录，不能仅据源码确认系统键盘冲突已解决。
+
+- Apple Doc MCP AppKit `addGlobalMonitorForEvents(matching:handler:)` 查询成功：全局监听接收其他应用的事件副本。完整权限/本地监听边界补充官方 [Monitoring Events](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/EventOverview/MonitoringEvents/MonitoringEvents.html)：键盘监听需要辅助功能信任，本地与全局分别覆盖自身与其他应用，监听不会吞掉系统操作。
+- [Apple 听写说明](https://support.apple.com/en-au/guide/mac-help/mh40584/26/mac/26)：系统听写可配置为按两次 Fn，并可能联动键盘的 Fn 操作。应用不改系统配置，设置页提示冲突。
+# 2026-10-07 卡片中心缩放
+
+Apple Doc MCP SwiftUI `scaleEffect(_:anchor:)` 查询成功：缩放相对于锚点执行。采用显式 `.center`，固定历史占位，并让玻璃实际布局尺寸随比例变化；官方 [scaleEffect](https://developer.apple.com/documentation/swiftui/view/scaleeffect(_:anchor:)) 不能作为特定设备玻璃渲染没有视觉偏移的证据，长按视觉仍需实测。
+# 2026-10-07 任意位置右键关闭预览
+
+Apple Doc MCP AppKit `addLocalMonitorForEvents(matching:handler:)` 查询成功。使用 [本地事件监听](https://developer.apple.com/documentation/appkit/nsevent/addlocalmonitorforevents(matching:handler:)) 处理自身窗口背景/卡片/预览，用 [全局事件监听](https://developer.apple.com/documentation/appkit/nsevent/addglobalmonitorforevents(matching:handler:)) 观察其他应用右键；后者不吞事件。只监听鼠标 rightMouseDown，未恢复地球键或全局键盘拦截。
+# 2026-10-07 原生横向回弹调研
+
+- 用户明确要求上网调研。Apple Doc MCP `NSScrollView.horizontalScrollElasticity`、SwiftUI `scrollBounceBehavior(_:axes:)` 查询成功；NSView convert 的带后缀路径返回 404，不重复盲查，采用既有公开 convert(_:to:) 和实际视图几何验证。
+- [horizontalScrollElasticity](https://developer.apple.com/documentation/appkit/nsscrollview/horizontalscrollelasticity)：系统提供超出文档边界的弹性；这不是选择一条贝塞尔曲线来移动整排卡片。
+- [scrollingDeltaX](https://developer.apple.com/documentation/appkit/nsevent/scrollingdeltax)：精确与非精确输入语义不同，后者可能需要调整原始值，phase/momentum 用于手势。
+- [NSScrollView 的滚动设置](https://developer.apple.com/documentation/appkit/nsscrollview/scrollsdynamically)：horizontalLineScroll 是行滚动量，scrollWheel(with:) 使用原生处理路径。实现保留 SwiftUI ScrollView/LazyHStack，不自行模拟惯性或终点回弹。
+
+2026-10-07 拖动玻璃：Apple [GlassEffectContainer](https://developer.apple.com/documentation/swiftui/glasseffectcontainer) / [Applying Liquid Glass](https://developer.apple.com/documentation/swiftui/applying-liquid-glass-to-custom-views) 要求玻璃形状在容器中；[NSDraggingItem](https://developer.apple.com/documentation/appkit/nsdraggingitem) SDK 头文件说明 contents=nil 可隐藏系统拖动图像。实时玻璃另用不接收鼠标的原生浮层，系统 session 负责数据。
+
+2026-10-07：[SwiftUI contentMargins](https://developer.apple.com/documentation/swiftui/view/contentmargins(_:_:for:))（macOS14+）用于滚动内容留白，而非缩窄视口的外侧 padding。
+
+## 2026-10-07：原生滚轮响应
+Apple Doc MCP AppKit 查询 NSView/hitTest(_:)、NSResponder/scrollWheel(with:)。前者负责命中视图，后者接收滚轮事件；实现使用独立滚轮命中区域，非滚轮返回 nil。官方链接：https://developer.apple.com/documentation/appkit/nsview/hittest(_:) 、https://developer.apple.com/documentation/appkit/nsresponder/scrollwheel(with:) 。
+
+2026-10-07：Apple Doc MCP AppKit `NSWindow/sendEvent(_:)` 明确该方法分发应用发送到窗口的鼠标和键盘事件。历史面板在此入口按区域路由滚轮，其他事件调用 super，不依赖 SwiftUI overlay 的 currentEvent 命中。https://developer.apple.com/documentation/appkit/nswindow/sendevent(_:)
+
+2026-10-07：SQLite.swift 官方文档（通过 Context7 /stephencelis/sqlite.swift 查询）支持 `limit(count, offset: offset)`，配合 timestamp/id 稳定排序读取轻量摘要页。读取限制不等于保存条数限制。https://github.com/stephencelis/SQLite.swift/blob/master/Documentation/Index.md
+
+2026-10-07：系统滚动修复使用 [ScrollPosition](https://developer.apple.com/documentation/swiftui/scrollposition)、[onScrollGeometryChange](https://developer.apple.com/documentation/swiftui/view/onscrollgeometrychange(for:of:action:))（均 macOS15+）驱动复位和接近末尾的分页；[horizontalScrollElasticity](https://developer.apple.com/documentation/appkit/nsscrollview/horizontalscrollelasticity) 为仍受支持的原生弹性控制（macOS10.7+）。Apple Doc MCP 成功；官网 HTML 需 JS，web Markdown 抓取报 Unsupported content-type，随后直接请求 Apple tutorials/data 对应 JSON 核实 introduction / deprecated 状态，均未弃用。当前 Xcode macOS27 SDK 构建通过。
+
+MCP 来源审计：本机配置 apple-doc-mcp-server@latest，本地包1.9.6。HttpClient 从 https://developer.apple.com/tutorials/data 获取 JSON；FileCache 先读磁盘符号/框架缓存，无自动过期检查，不能把 MCP 每次返回等同于实时官网。新 API 需同时核对官网和本机 SDK。
+
+2026-10-07 界面内引导：Apple Doc MCP成功查询 [anchorPreference](https://developer.apple.com/documentation/swiftui/view/anchorpreference(key:value:transform:)) 和 [FillStyle eoFill](https://developer.apple.com/documentation/swiftui/fillstyle/init(eofill:antialiased:))。前者收集真实控件边界并转换到遮罩坐标，后者创建镂空；无需截图替身或硬编码显示器坐标。参考 [Apple Onboarding HIG](https://developer.apple.com/design/human-interface-guidelines/onboarding)，web仅返回JS外壳，未以该空页面推导具体规范。工程官方桥接当前已连接：SenseFlow scheme、My Mac arm64/macOS27；桥接构建因缺账号及Mac Development私钥失败，未修改签名设置，沿用既有CODE_SIGNING_ALLOWED=NO本地验证。
+
+2026-10-07 引导视觉：Apple Doc MCP 已查询 [Material](https://developer.apple.com/documentation/swiftui/material)。采用 thinMaterial 为背景模糊，提示面沿用原生 glassEffect 兼容封装；系统材质决定实际模糊外观，不宣称公开了可调高斯半径。使用 spring/smooth 与 Reduce Motion，遮罩不进行截图、磁盘读写或卡片全文分析。
+
+2026-10-07 示例教程重做：检索 [Apple Onboarding HIG](https://developer.apple.com/design/human-interface-guidelines/onboarding?changes=_7)，搜索索引返回快速、可跳过及在相关区域旁提示的内容，直接页面仍为JS壳。检索 [Linear Start Guide](https://linear.app/docs/start-guide) 的独立 demo workspace；[Notion starter templates](https://www.notion.com/help/start-with-a-template) 的可操作初始内容。以独立内存示例教程为本项目选择，不伪称 Apple 提供了现成遮罩/流程。Apple Doc MCP查询SwiftUI Material确认原生背景材质。
+
+Onboarding审查：onboarding-design https://github.com/owl-listener/designer-skills/blob/main/interaction-design/skills/onboarding-design/SKILL.md 与 Impeccable onboard https://github.com/pbakaus/impeccable/blob/main/skill/reference/onboard.md 。采用原位提示、实际操作验证、可退出、示例数据原则；Web库建议不用于原生SwiftUI。
+
+AppleDocMCP AppKit reopen入口：https://developer.apple.com/documentation/appkit/nsapplicationdelegate/applicationshouldhandlereopen(_:hasvisiblewindows:) ，用于隐藏窗口后的重新显示，不将重新打开伪装为真实快捷键教学完成。
+
+## 文字局部羽化模糊（2026-10-07）
+- Apple NSVisualEffectView：https://developer.apple.com/documentation/AppKit/NSVisualEffectView?language=objc 。原生背景模糊；maskImage 的 alpha 控制材质可见范围；用于理解窗口内部与桌面背后模糊的区别；SwiftUI Material 只模糊应用自身背景，不宣称可读取桌面内容。
+- Apple maskImage：https://developer.apple.com/documentation/appkit/nsvisualeffectview/maskimage 。参考原生材质遮罩合同；最终使用 SwiftUI Material + EllipticalGradient alpha mask，避免移动原生材质背景时位置偏移。
+- 作者原始羽化示例：https://codepen.io/QuiteQuinn/pen/jOBxGjr 。背景模糊与渐变透明度遮罩组合。仅借鉴视觉结构，不引入网页实现。
+- 实现边界：本次为系统模糊材质的透明度羽化，不宣称真实逐像素变化的模糊半径。仅局部区域，不截图、不逐帧生成遮罩。
+
+- 最终 SwiftUI 官方接口：https://developer.apple.com/documentation/swiftui/material 。局部固定材质层，移动渐变 alpha 遮罩，不移动材质采样层。
+
+第一步箭头呼吸：Apple Animation.repeatForever(autoreverses:) https://developer.apple.com/documentation/swiftui/animation/repeatforever(autoreverses:) ；循环随视图生命周期结束。Reduce Motion：https://developer.apple.com/documentation/swiftui/environmentvalues/accessibilityreducemotion 。使用自定义轻微位移与透明度，不宣称苹果某产品的精确动画参数。
+
+- 2026-10-07 onboarding：Apple Doc MCP核对 [SwiftUI easeInOut(duration:)](https://developer.apple.com/documentation/swiftui/animation/easeinout(duration:))（缓入缓出）与 [NSWindow addChildWindow(_:ordered:)](https://developer.apple.com/documentation/appkit/nswindow/addchildwindow(_:ordered:))（附属窗口）。用于剪贴板上方独立教程提示与淡入淡出，不宣称复刻微软专有动效。
+
+- 2026-10-08 鼠标边缘反向：Apple Doc MCP核对 [NSClipView.constrainBoundsRect](https://developer.apple.com/documentation/appkit/nsclipview/constrainboundsrect(_:))、[NSScrollView.horizontalScrollElasticity](https://developer.apple.com/documentation/appkit/nsscrollview/horizontalscrollelasticity)、scrollWheel(with:)。NSEvent/Phase与cancelled符号路径404，改查苹果官网 [NSEvent.phase](https://developer.apple.com/documentation/appkit/nsevent/phase-swift.property)：普通滚轮phase/momentum为空，流体手势began→ended/cancelled。边缘取消效果以本机原生实测为证据，不由文档推定私有物理行为。
+
+### 首步露出三次方缓出（2026-10-08）
+Apple Doc MCP核对 UnitCurve.easeOut（快起慢停）、UnitCurve.bezier与value(at:)。精确三次方缓出使用控制点(1/3,1)、(2/3,1)，不同于系统通用easeOut的控制点。官方来源：https://developer.apple.com/documentation/swiftui/unitcurve/easeout ，https://developer.apple.com/documentation/swiftui/unitcurve/bezier(startcontrolpoint:endcontrolpoint:) 。
+
+### 原位手势教学
+微软官方手势指南搜索结果包含Teaching methods手形和双向箭头示例，PDF读取因application/octet-stream失败，不能认定为用户记忆中的具体动画：https://download.microsoft.com/download/B/0/7/B070724E-52B4-4B1A-BD1B-05CC28D07899/Human_Interface_Guidelines_v1.7.0.pdf 。Apple SF Symbols官方库：https://developer.apple.com/sf-symbols/ 。Apple Doc MCP核对TimelineView按schedule更新内容，使用animation schedule演示手势：https://developer.apple.com/documentation/swiftui/timelineview 。本机AppKit确认hand.draw系统图标可用。
+
+### 教程到真实历史的动画交接
+Apple Doc MCP核对withAnimation(_:completionCriteria:_:completion:)在所有动画完成后调用completion；使用.removed按退场完成→进场完成顺序交接与释放教程模型。官方：https://developer.apple.com/documentation/swiftui/withanimation(_:completioncriteria:_:completion:) 。
+
+- 2026-10-08，Apple Doc MCP：NSView.layoutSubtreeIfNeeded 更新接收视图及子视图布局。首次预览隐藏准备复用真实HostingView，不用截图： https://developer.apple.com/documentation/appkit/nsview/layoutsubtreeifneeded()
+
+- 2026-10-08，Apple Doc MCP查询 NSTouch.normalizedPosition、NSView.acceptsTouchEvents、NSEvent.touches(matching:in:)；Apple官网 NSTouch Overview说明触摸首次绑定到鼠标下方视图，直到结束/取消。不能据此声称隐藏应用获得全局触控板物理边缘位置。https://developer.apple.com/documentation/appkit/nstouch 。NSEvent.phase MCP路径404，未据此增加私有实现。
+
+- 2026-10-08：OpenMultitouchSupport维护者源码，固定提交15c6bb0c6a2d2858559493a28ab23f7ac58648a3，OpenMTInternal.h定义MTTouch字段与状态。参考接口/ABI，未引入库二进制：https://github.com/Kyome22/OpenMultitouchSupport/blob/15c6bb0c6a2d2858559493a28ab23f7ac58648a3/Framework/OpenMultitouchSupportXCF/OpenMTInternal.h 。维护者明确这是Private Framework且App Sandbox需关闭；本工程不改现有entitlements：https://github.com/Kyome22/OpenMultitouchSupport 。
+- 2026-10-08：EdgePad作者源码指出默认设备可能为60×2辅助传感器，并枚举MTDeviceCreateList+MTDeviceGetSensorDimensions过滤真实触控板；作为实现证据而非Apple官方行为保证：https://github.com/forkiron/EdgePad/blob/main/Sources/MultitouchCapture.swift 。当前机器实际识别26×18设备并启动/停止/重新启动，日志见out/2026-10-08-trackpad-reveal/verification.log。
+- 2026-10-08：Apple Doc MCP 核对 SwiftUI phaseAnimator(_:content:animation:)：持续循环阶段序列，可为每个阶段指定动画，macOS 14+ 可用。指尖演示改为原生阶段插值。https://developer.apple.com/documentation/swiftui/view/phaseanimator(_:content:animation:)
+- 2026-10-08：Apple Doc MCP 核对 NSEvent.hasPreciseScrollingDeltas 表示是否提供精确滚动量，用于区分精确纵向输入与普通滚轮适配；不是硬件设备身份保证。https://developer.apple.com/documentation/appkit/nsevent/hasprecisescrollingdeltas
+- 2026-10-08：Apple Doc MCP核对SwiftUI visualEffect(_:)提供几何位置和视觉变换、GeometryProxy.bounds(of:)返回坐标空间边界。https://developer.apple.com/documentation/swiftui/view/visualeffect(_:) ，https://developer.apple.com/documentation/swiftui/geometryproxy/bounds(of:)
+- 2026-10-08：系统截图可保存文件或直接复制剪贴板，录屏由截图工具提供：https://support.apple.com/en-lk/guide/mac-help/mh26782/mac 。文件捕获收集参考官方NSMetadataQuery与DispatchSource文件事件：https://developer.apple.com/documentation/Foundation/NSMetadataQuery ，https://developer.apple.com/documentation/dispatch/dispatchsource 。Apple Doc MCP CoreServices未找到且kMDItemIsScreenCapture路径404，不以该未验证符号保证捕获分类。
+
+## 2026-10-08 系统快速预览
+
+[SwiftUI quickLookPreview](https://developer.apple.com/documentation/swiftui/view/quicklookpreview(_:))绑定文件URL，由系统呈现。Apple Doc MCP精确路径返回404且搜索未解析符号，改查Apple官网；实际QLPreviewPanel呈现验证通过。
+
+
+## 2026-10-08 整体重构：事件与并发边界
+
+通过 Apple Doc MCP 当前文档核验：
+- [AppKit 本地事件监听](https://developer.apple.com/documentation/appkit/nsevent/addlocalmonitorforevents(matching:handler:))在事件分发前接收事件，不能依赖多个监听器的安装顺序来区分卡片与背景。窗口层需显式判断卡片命中。
+- [Swift Actor](https://developer.apple.com/documentation/swift/actor)提供 actor 的串行执行边界。生成准备/响应处理属于后台服务，UI记录写入才切换主actor；网络等待期间多个请求各自持有SDK client。
+
+本批未升级SDK、修改外部端点或引入新SQL行为；SQLite文档事务保留原实现与单一数据库队列，实际迁移和草稿验证覆盖这些边界。
+
+2026-10-08 OCR队列重构复用既有HistoryMediaLoader/Vision接口，未引入新Apple API。Apple Doc MCP的ImageIO技术选择无法解析，CGImageSourceCreateImageAtIndex文档请求返回404；因此本批不据此修改图像解码API。
+
+缩略图等待者取消依据Apple Swift `withTaskCancellationHandler(operation:onCancel:isolation:)`（Apple Doc MCP读取2026-10-08）：取消触发独立handler；actor中注销等待者，不能假定等待共享任务会自动取消该任务。https://developer.apple.com/documentation/swift/withtaskcancellationhandler(operation:oncancel:isolation:)
+
+2026-10-08捕获设置闪退：Apple Doc MCP读取NSMetadataQuery.predicate，入口https://developer.apple.com/documentation/foundation/nsmetadataquery/predicate 。接口概述不足以保证Foundation任意compound都适合Spotlight。隔离真实启动查询复现“NSOrPredicateType NSCompoundPredicate with wrong number (1) of subpredicates”；单类别直接predicate、双类别OR，全部类别/日期边界组合通过实际query.start验证。证据见out/2026-10-08-project-refactor/predicate-start-date.log与risk-stage7.log；不是用fixture模拟外部API。
+
+- 2026-10-08 OCR：Apple Doc MCP `RecognizeTextRequest`：macOS15起支持Swift异步图片Data识别；工程部署15.6可直接采用，无需旧VN并行路径。官方入口：https://developer.apple.com/documentation/vision/recognizetextrequest 。独立连续同原件实验见 `out/2026-10-08-project-refactor/vision-modern-stage16.log`；实验不代替产品回归。
+
+- 2026-10-08 滚轮分流：Apple Doc MCP `NSEvent/hasPreciseScrollingDeltas`只描述delta精度，不能单独当作硬件身份。https://developer.apple.com/documentation/appkit/nsevent/hasprecisescrollingdeltas 。phase MCP路径404，官方入口 https://developer.apple.com/documentation/appkit/nsevent/phase 。高精度无phase鼠标事件与带phase的纵向手势通过真实NSPanel事件派发分别验证。
+
+- 2026-10-08：录屏Quick Look焦点回归。Apple Doc MCP选SwiftUI后quickLookPreview查询返回无关动画符号，采用官方页面 https://developer.apple.com/documentation/swiftui/view/quicklookpreview(_:) ：系统预览由可选URL绑定呈现。本应用窗口自动隐藏对系统预览会话的处理属于本地设计，不由文档推断系统key通知顺序。
+
+- 2026-10-08：原生录屏会话采用QLPreviewPanel，Apple Doc MCP读取 /documentation/quicklookui/qlpreviewpanel（technology名称选择不可解析，但页面返回API）确认shared、dataSource、reloadData、delegate。官方对应 https://developer.apple.com/documentation/quicklookui/qlpreviewpanel 。窗口池和焦点行为由实际原生验证负责，不把页面描述当作焦点保证。
+
+- 阶段 28 滚动惯性：Apple Doc MCP 查询 [NSEvent.momentumPhase](https://developer.apple.com/documentation/appkit/nsevent/momentumphase) 与 [NSScrollView.horizontalScrollElasticity](https://developer.apple.com/documentation/appkit/nsscrollview/horizontalscrollelasticity)。无系统惯性的鼠标补充衰减参数为项目选择，非苹果官方预设。
+
+- 阶段 29 平台动效：Apple Doc MCP 确认 NSView.displayLink（macOS14）同步视图所在显示器，Spring 提供 smooth/snappy/bouncy 及位置/速度计算，SymbolEffect 提供原生符号反馈，CAMediaTimingFunction(name:) 使用命名曲线。事实、链接、不能原生替代的边界与原生验证见 [动效平台替换合同](MOTION_PLATFORM_2026-10-08.md)。普通鼠标惯性事件适配属于应用逻辑，不把公开 API 当作苹果 Dock 公式或官方长按阈值。

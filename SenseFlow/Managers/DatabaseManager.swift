@@ -31,6 +31,8 @@ class DatabaseManager {
     private let appName = Expression<String>("app_name")
     private let appPath = Expression<String?>("app_path")
     private let ocrText = Expression<String?>("ocr_text")  // v0.2: OCR 识别的文本
+    private let captureKind = Expression<String?>("capture_kind")
+    private let origin = Expression<String>("origin")
 
     // v0.2: Prompt Tools 表
     internal let promptToolsTable = Table("prompt_tools")
@@ -60,13 +62,44 @@ class DatabaseManager {
     internal let toolCapabilities = Expression<String?>("capabilities")
 
     // 配置
-    private let maxHistoryCount = 200  // 最大历史记录数
     private let largeFileSizeThreshold = 512 * 1024  // 512KB
 
     // MARK: - Initialization
 
-    private init() {
-        setupDatabase()
+    internal let storeQueue = DispatchQueue(label: "top.senseflow.history-store", qos: .userInitiated)
+    private let queueKey = DispatchSpecificKey<Bool>()
+    // Owned exclusively by storeQueue; pending originals stay in SQLite, not task closures.
+    private var isRecognizingHistory = false
+    private var recognitionCursor: Int64 = 0
+    private let blobs: BlobFileManager
+    private let databaseURL: URL?
+    private var openedDatabaseURL: URL?
+    internal var onStoreQueue: Bool { DispatchQueue.getSpecific(key: queueKey) == true }
+
+    /// A custom URL isolates integration verification from user history.
+    init(databaseURL: URL? = nil) {
+        self.databaseURL = databaseURL
+        self.blobs = databaseURL.map { BlobFileManager(directory: $0.deletingLastPathComponent().appendingPathComponent("blobs")) } ?? .shared
+        storeQueue.setSpecific(key: queueKey, value: true)
+        storeQueue.sync { setupDatabase() }
+    }
+
+    /// Serializes a complete store operation, including transactions, off the UI thread.
+    func performStoreOperation<T>(_ operation: @escaping () throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            storeQueue.async {
+                do { continuation.resume(returning: try operation()) }
+                catch { continuation.resume(throwing: error) }
+            }
+        }
+    }
+
+    /// Capture ordering follows submissions to the single store owner.
+    func enqueueCapture(_ request: ClipboardItemInsertRequest, completion: @escaping (Bool) -> Void) {
+        storeQueue.async {
+            let success = self.insertItem(request)
+            DispatchQueue.main.async { completion(success) }
+        }
     }
 
     // MARK: - Database Setup
@@ -87,7 +120,8 @@ class DatabaseManager {
             try fileManager.createDirectory(at: appDirectory, withIntermediateDirectories: true)
 
             // 创建数据库文件
-            let dbPath = appDirectory.appendingPathComponent("clipboard.sqlite").path
+            let dbPath = (databaseURL ?? appDirectory.appendingPathComponent("clipboard.sqlite")).path
+            openedDatabaseURL = URL(fileURLWithPath: dbPath)
             db = try Connection(dbPath)
 
             print("📂 数据库路径: \(dbPath)")
@@ -101,6 +135,8 @@ class DatabaseManager {
             // 数据库迁移（必须在表创建后执行）
             print("🔍 开始检查数据库迁移...")
             try migrateIfNeeded()
+            try migrateCaptureMetadata()
+            try createDocumentTables()
 
             print("✅ 数据库初始化成功: \(dbPath)")
 
@@ -110,7 +146,7 @@ class DatabaseManager {
     }
 
     /// 统一的数据库错误处理
-    private func handleDatabaseError(_ context: String, error: Error) {
+    func handleDatabaseError(_ context: String, error: Error) {
         print("❌ \(context): \(error.localizedDescription)")
         // 可以在这里添加更多错误处理逻辑，如错误上报、用户通知等
     }
@@ -176,6 +212,22 @@ class DatabaseManager {
 
     // MARK: - CRUD Operations
 
+    private func migrateCaptureMetadata() throws {
+        guard let db else { throw DocumentStoreError.unavailable }
+        let columns = Set(try db.prepare("PRAGMA table_info(clipboard_history)").compactMap { $0[1] as? String })
+        guard !columns.contains("capture_kind") || !columns.contains("origin") else { return }
+        guard let location = openedDatabaseURL else { throw DocumentStoreError.unavailable }
+        let backups = location.deletingLastPathComponent().appendingPathComponent("migration-backups")
+        try FileManager.default.createDirectory(at: backups, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let backup = backups.appendingPathComponent("before-captures-\(UUID().uuidString).sqlite")
+        try db.run("VACUUM INTO ?", backup.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)
+        try db.transaction {
+            if !columns.contains("capture_kind") { try db.run("ALTER TABLE clipboard_history ADD COLUMN capture_kind TEXT") }
+            if !columns.contains("origin") { try db.run("ALTER TABLE clipboard_history ADD COLUMN origin TEXT NOT NULL DEFAULT 'clipboard'") }
+        }
+    }
+
     /// 剪贴板项目插入请求
     struct ClipboardItemInsertRequest {
         let type: ClipboardItemType
@@ -183,47 +235,73 @@ class DatabaseManager {
         let imageData: Data?
         let appName: String
         let appPath: String?
+        let captureKind: SystemCaptureKind?
+        let origin: HistoryOrigin
+        let contentIdentity: String?
+        let storedMediaPath: String?
+        let capturedAt: Int64?
 
-        init(type: ClipboardItemType, textContent: String? = nil, imageData: Data? = nil, appName: String, appPath: String? = nil) {
+        init(type: ClipboardItemType, textContent: String? = nil, imageData: Data? = nil, appName: String, appPath: String? = nil,
+             captureKind: SystemCaptureKind? = nil, origin: HistoryOrigin = .clipboard,
+             contentIdentity: String? = nil, storedMediaPath: String? = nil, capturedAt: Int64? = nil) {
             self.type = type
             self.textContent = textContent
             self.imageData = imageData
             self.appName = appName
             self.appPath = appPath
+            self.captureKind = captureKind
+            self.origin = origin
+            self.contentIdentity = contentIdentity
+            self.capturedAt = capturedAt
+            self.storedMediaPath = storedMediaPath
         }
     }
 
     /// 插入新条目（自动去重，重复内容移到最前面）
     func insertItem(_ request: ClipboardItemInsertRequest) -> Bool {
+        if !onStoreQueue { return storeQueue.sync { self.insertItem(request) } }
         guard let db = db else { return false }
 
         do {
-            let uniqueIdValue = try validateAndGenerateUniqueId(
+            if request.type == .text, request.textContent?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false { return false }
+            if request.type == .video, request.storedMediaPath == nil || request.contentIdentity == nil { return false }
+            let uniqueIdValue = try request.contentIdentity ?? validateAndGenerateUniqueId(
                 type: request.type,
                 textContent: request.textContent,
                 imageData: request.imageData
             )
 
-            // 如果内容已存在，删除旧记录（新记录会自动排在最前面）
-            if itemExists(uniqueId: uniqueIdValue) {
-                deleteItemByUniqueId(uniqueId: uniqueIdValue)
-                print("🔄 内容已存在，移到最前面")
+            var rowId: Int64 = 0
+            var isNew = false
+            try db.transaction {
+                if let existing = try db.pluck(historyTable.filter(uniqueId == uniqueIdValue)) {
+                    rowId = existing[id]
+                    if request.origin != .file {
+                        try db.run(historyTable.filter(id == rowId).update(timestamp <- Int64(Date().timeIntervalSince1970)))
+                    }
+                    if let kind = request.captureKind {
+                        try db.run(historyTable.filter(id == rowId).update(captureKind <- kind.rawValue))
+                    }
+                } else {
+                    isNew = true
+                    rowId = try insertToDatabase(
+                        db: db,
+                        uniqueId: uniqueIdValue,
+                        type: request.type,
+                        textContent: request.textContent,
+                        imageData: request.imageData,
+                        appName: request.appName,
+                        appPath: request.appPath,
+                        captureKind: request.captureKind,
+                        origin: request.origin,
+                        storedMediaPath: request.storedMediaPath,
+                        capturedAt: request.capturedAt
+                    )
+                }
             }
-
-            let rowId = try insertToDatabase(
-                db: db,
-                uniqueId: uniqueIdValue,
-                type: request.type,
-                textContent: request.textContent,
-                imageData: request.imageData,
-                appName: request.appName,
-                appPath: request.appPath
-            )
-
-            try cleanupOldRecords()
             print("✅ 插入成功: \(request.type.rawValue)")
 
-            scheduleOCRIfNeeded(type: request.type, rowId: rowId, imageData: request.imageData)
+            if isNew { scheduleOCRIfNeeded(type: request.type, rowId: rowId) }
 
             return true
 
@@ -233,20 +311,6 @@ class DatabaseManager {
         }
     }
 
-    /// 插入新条目（便捷方法，保持向后兼容）
-    @available(*, deprecated, message: "Use insertItem(_:ClipboardItemInsertRequest) instead")
-    func insertItem(type: ClipboardItemType, textContent: String? = nil, imageData: Data? = nil, appName: String, appPath: String?) -> Bool {
-        let request = ClipboardItemInsertRequest(
-            type: type,
-            textContent: textContent,
-            imageData: imageData,
-            appName: appName,
-            appPath: appPath
-        )
-        return insertItem(request)
-    }
-
-    /// 验证并生成唯一 ID
     private func validateAndGenerateUniqueId(type: ClipboardItemType, textContent: String?, imageData: Data?) throws -> String {
         let uniqueId = generateUniqueId(type: type, textContent: textContent, imageData: imageData)
         guard !uniqueId.isEmpty else {
@@ -256,90 +320,72 @@ class DatabaseManager {
     }
 
     /// 插入数据到数据库
-    private func insertToDatabase(db: Connection, uniqueId: String, type: ClipboardItemType, textContent: String?, imageData: Data?, appName: String, appPath: String?) throws -> Int64 {
+    private func insertToDatabase(db: Connection, uniqueId: String, type: ClipboardItemType, textContent: String?, imageData: Data?, appName: String, appPath: String?, captureKind: SystemCaptureKind? = nil, origin: HistoryOrigin = .clipboard, storedMediaPath: String? = nil, capturedAt: Int64? = nil) throws -> Int64 {
         let (finalImageData, blobPathValue) = try processImageData(imageData, uniqueId: uniqueId)
-        let timestampValue = Int64(Date().timeIntervalSince1970)
+        let timestampValue = capturedAt ?? Int64(Date().timeIntervalSince1970)
 
         return try db.run(historyTable.insert(
             self.uniqueId <- uniqueId,
             self.type <- type.rawValue,
             self.textContent <- textContent,
             self.imageData <- finalImageData,
-            self.blobPath <- blobPathValue,
+            self.blobPath <- storedMediaPath ?? blobPathValue,
             self.timestamp <- timestampValue,
             self.appName <- appName,
             self.appPath <- appPath,
-            self.ocrText <- nil
+            self.ocrText <- nil,
+            self.captureKind <- captureKind?.rawValue,
+            self.origin <- origin.rawValue
         ))
     }
 
-    /// 如果是图片类型，安排 OCR 识别
-    private func scheduleOCRIfNeeded(type: ClipboardItemType, rowId: Int64, imageData: Data?) {
-        guard type == .image else { return }
-
-        if let data = imageData {
-            print("📸 开始 OCR（小图片，\(data.count) bytes）")
-            performOCR(for: rowId, imageData: data)
-        } else {
-            scheduleOCRForLargeImage(rowId: rowId)
-        }
+    /// Starts one consumer for newly inserted images; queued work retains no image bytes.
+    private func scheduleOCRIfNeeded(type: ClipboardItemType, rowId: Int64) {
+        guard type == .image, !isRecognizingHistory else { return }
+        recognitionCursor = rowId - 1
+        isRecognizingHistory = true
+        Task.detached(priority: .utility) { await self.recognizePendingHistory() }
     }
 
-    /// 为大图片安排 OCR（从文件读取）
-    private func scheduleOCRForLargeImage(rowId: Int64) {
-        guard let db = db else { return }
-
-        do {
-            let query = historyTable.filter(id == rowId)
-            guard let row = try db.pluck(query), let path = row[blobPath] else {
-                print("⚠️ 图片没有数据，无法执行 OCR")
+    private func recognizePendingHistory() async {
+        while true {
+            let item: ClipboardItem?
+            do {
+                item = try await performStoreOperation {
+                    guard let db = self.db else {
+                        self.isRecognizingHistory = false
+                        return nil
+                    }
+                    let query = self.historyTable
+                        .filter(self.type == ClipboardItemType.image.rawValue && self.id > self.recognitionCursor)
+                        .order(self.id.asc).limit(1)
+                    guard let row = try db.pluck(query) else {
+                        self.isRecognizingHistory = false
+                        return nil
+                    }
+                    self.recognitionCursor = row[self.id]
+                    return try self.loadHistoryDetail(itemID: row[self.id], revision: row[self.uniqueId])
+                }
+            } catch {
+                _ = try? await performStoreOperation {
+                    self.isRecognizingHistory = false
+                    self.handleDatabaseError("读取OCR原件失败", error: error)
+                }
                 return
             }
-
-            guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
-                print("⚠️ 无法读取大图片文件: \(path)")
-                return
+            guard let item else { return }
+            do {
+                let data = try await HistoryMediaLoader.imageData(for: item)
+                guard let text = await OCRService.shared.recognizeText(from: data) else { continue }
+                _ = try await performStoreOperation {
+                    guard let db = self.db else { return }
+                    let current = self.historyTable.filter(self.id == item.id && self.uniqueId == item.uniqueId)
+                    try db.run(current.update(self.ocrText <- text))
+                }
+            } catch {
+                // A deleted original or failed recognition never mutates history or stops the queue.
+                continue
             }
-
-            print("📸 开始 OCR（大图片，\(data.count) bytes）")
-            performOCR(for: rowId, imageData: data)
-        } catch {
-            handleDatabaseError("读取大图片失败", error: error)
-        }
-    }
-
-    /// 后台执行 OCR 识别（不阻塞主线程）
-    /// - Parameters:
-    ///   - rowId: 数据库行 ID
-    ///   - imageData: 图片数据
-    private func performOCR(for rowId: Int64, imageData: Data) {
-        Task.detached(priority: .utility) {
-            let startTime = Date()
-            if let ocrResult = await OCRService.shared.recognizeText(from: imageData) {
-                let elapsed = Date().timeIntervalSince(startTime)
-                print("✅ OCR 完成: \(ocrResult.prefix(BusinessRules.TextPreview.logPreview))... (\(String(format: "%.2f", elapsed))s)")
-
-                // 更新数据库
-                await self.updateOCRText(for: rowId, ocrText: ocrResult)
-            } else {
-                print("⚠️ OCR 未识别到文字")
-            }
-        }
-    }
-
-    /// 更新 OCR 文本
-    /// - Parameters:
-    ///   - rowId: 数据库行 ID
-    ///   - ocrText: OCR 识别的文本
-    private func updateOCRText(for rowId: Int64, ocrText: String) async {
-        guard let db = db else { return }
-
-        do {
-            let item = historyTable.filter(id == rowId)
-            try db.run(item.update(self.ocrText <- ocrText))
-            print("✅ OCR 文本已更新到数据库")
-        } catch {
-            handleDatabaseError("更新 OCR 文本失败", error: error)
         }
     }
 
@@ -356,8 +402,8 @@ class DatabaseManager {
             return (nil, nil)
         }
 
-        if BlobFileManager.shared.shouldStoreLargeFileExternally(data) {
-            let blobPath = try BlobFileManager.shared.saveLargeFile(data: data, uniqueId: uniqueId)
+        if blobs.shouldStoreLargeFileExternally(data) {
+            let blobPath = try blobs.saveLargeFile(data: data, uniqueId: uniqueId)
             return (nil, blobPath)
         } else {
             return (data, nil)
@@ -366,6 +412,7 @@ class DatabaseManager {
 
     /// 检查条目是否存在
     func itemExists(uniqueId: String) -> Bool {
+        if !onStoreQueue { return storeQueue.sync { self.itemExists(uniqueId: uniqueId) } }
         guard let db = db else { return false }
 
         do {
@@ -379,6 +426,7 @@ class DatabaseManager {
 
     /// 获取最新的 N 条记录
     func fetchRecentItems(limit: Int = 200) -> [ClipboardItem] {
+        if !onStoreQueue { return storeQueue.sync { self.fetchRecentItems(limit: limit) } }
         guard let db = db else { return [] }
 
         do {
@@ -398,7 +446,8 @@ class DatabaseManager {
                     timestamp: row[timestamp],
                     appName: row[appName],
                     appPath: row[appPath],
-                    ocrText: row[ocrText]  // v0.2: OCR 文本
+                    ocrText: row[ocrText], captureKind: row[captureKind].flatMap(SystemCaptureKind.init(rawValue:)),
+                    origin: HistoryOrigin(rawValue: row[origin]) ?? .clipboard
                 )
                 items.append(item)
             }
@@ -411,85 +460,31 @@ class DatabaseManager {
         }
     }
 
-    /// 搜索剪贴板历史（支持文本内容、应用名称、OCR 文本搜索）
-    /// - Parameters:
-    ///   - query: 搜索关键词
-    ///   - limit: 最大返回数量
-    /// - Returns: 匹配的剪贴板项数组
-    func searchItems(query: String, limit: Int = 200) -> [ClipboardItem] {
-        guard let db = db else { return [] }
-
-        // 空查询返回全部
-        guard !query.isEmpty else {
-            return fetchRecentItems(limit: limit)
-        }
-
-        do {
-            let searchPattern = "%\(query)%"
-            // v0.2: 支持搜索 OCR 文本
-            let searchQuery = historyTable
-                .filter(textContent.like(searchPattern) || appName.like(searchPattern) || ocrText.like(searchPattern))
-                .order(timestamp.desc)
-                .limit(limit)
-
-            var items: [ClipboardItem] = []
-            for row in try db.prepare(searchQuery) {
-                let item = ClipboardItem(
-                    id: row[id],
-                    uniqueId: row[uniqueId],
-                    type: ClipboardItemType(rawValue: row[type]) ?? .text,
-                    textContent: row[textContent],
-                    imageData: row[imageData],
-                    blobPath: row[blobPath],
-                    timestamp: row[timestamp],
-                    appName: row[appName],
-                    appPath: row[appPath],
-                    ocrText: row[ocrText]  // v0.2: OCR 文本
-                )
-                items.append(item)
-            }
-
-            print("🔍 搜索 '\(query)' 找到 \(items.count) 条记录")
-            return items
-
-        } catch {
-            handleDatabaseError("搜索失败", error: error)
-            return []
-        }
-    }
-
     // MARK: - Async Query Methods
 
     /// 异步查询最近的剪贴板历史（async/await 版本）
     /// - Parameter limit: 最大返回数量
     /// - Returns: 剪贴板项数组
-    func fetchRecentItemsAsync(limit: Int = 200) async -> [ClipboardItem] {
-        return await Task.detached(priority: .userInitiated) {
-            return self.fetchRecentItems(limit: limit)
-        }.value
+    func fetchRecentItemsAsync(limit: Int = 200, offset: Int = 0) async throws -> [ClipboardItem] {
+        try await performStoreOperation { try self.fetchSummaries(query: "", limit: limit, offset: offset) }
     }
 
-    /// 异步搜索剪贴板历史（async/await 版本）
-    /// - Parameters:
-    ///   - query: 搜索关键词
-    ///   - limit: 最大返回数量
-    /// - Returns: 匹配的剪贴板项数组
-    func searchItemsAsync(query: String, limit: Int = 200) async -> [ClipboardItem] {
-        return await Task.detached(priority: .userInitiated) {
-            return self.searchItems(query: query, limit: limit)
-        }.value
+    /// Fetches only bounded text excerpts; full contents are loaded for explicit actions.
+    func searchItemsAsync(query: String, limit: Int = 200, offset: Int = 0) async throws -> [ClipboardItem] {
+        try await performStoreOperation { try self.fetchSummaries(query: query, limit: limit, offset: offset) }
     }
 
     /// 删除单条记录
     /// - Parameter itemId: 要删除的记录 ID
     func deleteItem(id itemId: Int64) {
+        if !onStoreQueue { return storeQueue.sync { self.deleteItem(id: itemId) } }
         guard let db = db else { return }
 
         do {
             let query = historyTable.filter(id == itemId)
             if let row = try db.pluck(query) {
                 if let path = row[blobPath] {
-                    BlobFileManager.shared.deleteBlobFile(at: path)
+                    blobs.deleteBlobFile(at: path)
                 }
             }
 
@@ -503,34 +498,18 @@ class DatabaseManager {
         }
     }
 
-    /// 根据 uniqueId 删除记录（用于去重时删除旧记录）
-    /// - Parameter uniqueId: 记录的唯一 ID
-    private func deleteItemByUniqueId(uniqueId: String) {
-        guard let db = db else { return }
-
-        do {
-            let query = historyTable.filter(self.uniqueId == uniqueId)
-            if let row = try db.pluck(query) {
-                if let path = row[blobPath] {
-                    BlobFileManager.shared.deleteBlobFile(at: path)
-                }
-            }
-
-            try db.run(query.delete())
-            print("🗑️ 已删除旧记录: \(uniqueId.prefix(8))...")
-
-        } catch {
-            handleDatabaseError("删除旧记录失败", error: error)
-        }
-    }
-
     /// 删除所有记录
     func clearAllItems() {
+        if !onStoreQueue { return storeQueue.sync { self.clearAllItems() } }
         guard let db = db else { return }
 
         do {
-            try db.run(historyTable.delete())
-            try BlobFileManager.shared.cleanupAllBlobFiles()
+            try db.transaction {
+                try db.run(historyTable.delete())
+                try db.run("DELETE FROM document_drafts")
+                try db.run("DELETE FROM document_versions")
+            }
+            try blobs.cleanupAllBlobFiles()
 
             print("✅ 已清空所有记录")
 
@@ -542,320 +521,79 @@ class DatabaseManager {
     }
 
 
-    /// 清理旧记录（保持最大数量限制）
-    private func cleanupOldRecords() throws {
-        try cleanupRecordsExceeding(limit: maxHistoryCount)
+    // MARK: - Document storage (only invoked on storeQueue)
+
+    private func createDocumentTables() throws {
+        guard let db else { throw DocumentStoreError.unavailable }
+        let schemaExists = (try db.scalar("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='document_drafts'") as? Int64 ?? 0) > 0
+        if !schemaExists, databaseURL == nil {
+            // Resolve the canonical app directory rather than relying on Connection.description.
+            let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            let backups = support.appendingPathComponent(AppConstants.appSupportDirectoryName).appendingPathComponent("migration-backups")
+            try FileManager.default.createDirectory(at: backups, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            let backup = backups.appendingPathComponent("before-document-drafts-\(UUID().uuidString).sqlite")
+            try db.run("VACUUM INTO ?", backup.path)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)
+        }
+        try SQLiteDocumentStore(db: db).createTables()
     }
 
-
-    /// 强制执行历史记录上限（从设置中调用）
-    /// - Parameter limit: 新的历史记录上限
-    func enforceHistoryLimit(limit: Int) {
-        do {
-            try cleanupRecordsExceeding(limit: limit)
-            NotificationCenter.default.post(name: .clipboardDidUpdate, object: nil)
-        } catch {
-            handleDatabaseError("强制清理失败", error: error)
+    /// Lists bounded excerpts without loading image BLOBs or full document strings.
+    private func fetchSummaries(query: String, limit: Int, offset: Int) throws -> [ClipboardItem] {
+        guard let db else { throw DocumentStoreError.unavailable }
+        let excerpt = Expression<String?>(literal: "substr(text_content, 1, 1025)")
+        var selection = historyTable.select(id, uniqueId, type, excerpt, blobPath, timestamp, appName, appPath, captureKind, origin)
+        if !query.isEmpty {
+            let pattern = "%\(query)%"
+            selection = selection.filter(textContent.like(pattern) || appName.like(pattern) || ocrText.like(pattern))
+        }
+        return try db.prepare(selection.order(timestamp.desc, id.desc).limit(limit, offset: offset)).map { row in
+            ClipboardItem(id: row[id], uniqueId: row[uniqueId], type: ClipboardItemType(rawValue: row[type]) ?? .text,
+                          textContent: row[excerpt], imageData: nil, blobPath: row[blobPath], timestamp: row[timestamp],
+                          appName: row[appName], appPath: row[appPath], isSummary: true,
+                          captureKind: row[captureKind].flatMap(SystemCaptureKind.init(rawValue:)), origin: HistoryOrigin(rawValue: row[origin]) ?? .clipboard)
         }
     }
 
-    /// 清理超过指定上限的记录（公共逻辑）
-    private func cleanupRecordsExceeding(limit: Int) throws {
-        guard let db = db else { return }
+    /// Full payload is fetched only for preview, copy or paste.
+    func loadHistoryDetail(itemID: Int64, revision: String) throws -> ClipboardItem {
+        if !onStoreQueue { return try storeQueue.sync { try self.loadHistoryDetail(itemID: itemID, revision: revision) } }
+        guard let db else { throw DocumentStoreError.unavailable }
+        guard let row = try db.pluck(historyTable.filter(id == itemID)) else { throw DocumentStoreError.missing }
+        guard row[uniqueId] == revision else { throw DocumentStoreError.changed }
+        return ClipboardItem(id: row[id], uniqueId: row[uniqueId], type: ClipboardItemType(rawValue: row[type]) ?? .text,
+                             textContent: row[textContent], imageData: row[imageData], blobPath: row[blobPath],
+                             timestamp: row[timestamp], appName: row[appName], appPath: row[appPath], ocrText: row[ocrText],
+                             captureKind: row[captureKind].flatMap(SystemCaptureKind.init(rawValue:)), origin: HistoryOrigin(rawValue: row[origin]) ?? .clipboard)
+    }
 
-        let count = try db.scalar(historyTable.count)
-        guard count > limit else {
-            print("📊 当前记录数 \(count) 未超过上限 \(limit)，无需清理")
-            return
+    /// Saves an immutable derived record and its request identity in one transaction.
+    func saveDocumentVersion(text: String, source: DocumentSnapshot, requestID: UUID) throws -> Int64 {
+        if !onStoreQueue { return try storeQueue.sync { try self.saveDocumentVersion(text: text, source: source, requestID: requestID) } }
+        guard let db else { throw DocumentStoreError.unavailable }
+        let result = try SQLiteDocumentStore(db: db).saveVersion(text: text, source: source, requestID: requestID) { hash in
+            try self.insertToDatabase(db: db, uniqueId: hash, type: .text, textContent: text,
+                                      imageData: nil, appName: source.appName, appPath: source.appPath)
         }
-
-        let deleteCount = count - limit
-        try deleteOldestRecords(count: deleteCount)
-        print("🧹 清理了 \(deleteCount) 条旧记录")
+        DispatchQueue.main.async { NotificationCenter.default.post(name: .clipboardDidUpdate, object: nil) }
+        return result
+    }
+    func checkpointDocumentDraft(_ draft: DocumentDraft) throws {
+        if !onStoreQueue { return try storeQueue.sync { try self.checkpointDocumentDraft(draft) } }
+        guard let db else { throw DocumentStoreError.unavailable }
+        try SQLiteDocumentStore(db: db).checkpoint(draft)
+    }
+    func recoverDocumentDraft(sourceID: Int64) throws -> DocumentDraft? {
+        if !onStoreQueue { return try storeQueue.sync { try self.recoverDocumentDraft(sourceID: sourceID) } }
+        guard let db else { throw DocumentStoreError.unavailable }
+        return try SQLiteDocumentStore(db: db).recover(sourceID: sourceID)
+    }
+    func discardDocumentDraft(sessionID: UUID, generation: Int) throws {
+        if !onStoreQueue { return try storeQueue.sync { try self.discardDocumentDraft(sessionID: sessionID, generation: generation) } }
+        guard let db else { throw DocumentStoreError.unavailable }
+        try SQLiteDocumentStore(db: db).discard(sessionID: sessionID, generation: generation)
     }
 
-    /// 删除最旧的 N 条记录
-    private func deleteOldestRecords(count: Int) throws {
-        guard let db = db else { return }
-
-        let oldestItems = historyTable
-            .order(timestamp.asc)
-            .limit(count)
-
-        // 删除关联的 blob 文件
-        for row in try db.prepare(oldestItems) {
-            if let path = row[blobPath] {
-                BlobFileManager.shared.deleteBlobFile(at: path)
-            }
-        }
-
-        // 删除数据库记录
-        let oldestTimestamp = try db.prepare(oldestItems).map { $0[timestamp] }.max() ?? 0
-        try db.run(historyTable.filter(timestamp <= oldestTimestamp).delete())
-    }
-
-    // MARK: - Prompt Tools CRUD Operations
-
-    /// 获取所有 Prompt Tools
-    func fetchAllPromptTools() -> [PromptTool] {
-        guard let db = db else { return [] }
-
-        do {
-            var tools: [PromptTool] = []
-            for row in try db.prepare(promptToolsTable.order(toolCreatedAt.asc)) {
-                // 使用扩展中的 parsePromptTool 方法来正确解析所有字段
-                let tool = parsePromptToolFromRow(row)
-                tools.append(tool)
-            }
-            return tools
-        } catch {
-            handleDatabaseError("获取 Prompt Tools 失败", error: error)
-            return []
-        }
-    }
-
-    /// 从数据库行解析 PromptTool（包含所有字段）
-    internal func parsePromptToolFromRow(_ row: Row) -> PromptTool {
-        let id = UUID(uuidString: try! row.get(toolId)) ?? UUID()
-        let name = try! row.get(toolName)
-        let prompt = try! row.get(toolPrompt)
-        let shortcutKeyCode = UInt16(try! row.get(toolShortcutKeyCode))
-        let shortcutModifiers = UInt32(try! row.get(toolShortcutModifiers))
-        let isDefault = try! row.get(toolIsDefault)
-        let createdAt = Date(timeIntervalSince1970: try! row.get(toolCreatedAt))
-        let updatedAt = Date(timeIntervalSince1970: try! row.get(toolUpdatedAt))
-
-        // v0.4 字段（可能不存在）
-        let sourceString = (try? row.get(toolSource)) ?? "custom"
-        let source = ToolSource(rawValue: sourceString) ?? .custom
-        let remoteId = try? row.get(toolRemoteId)
-        let remoteAuthor = try? row.get(toolRemoteAuthor)
-        let remoteVotes = (try? row.get(toolRemoteVotes)) ?? 0
-        let remoteUpdatedAtTimestamp = try? row.get(toolRemoteUpdatedAt)
-        let remoteUpdatedAt = remoteUpdatedAtTimestamp.map { Date(timeIntervalSince1970: $0) }
-
-        // v0.5 Langfuse 字段（可能不存在）
-        let langfuseName = try? row.get(toolLangfuseName)
-        let langfuseVersion = try? row.get(toolLangfuseVersion)
-        let langfuseLabelsJson = try? row.get(toolLangfuseLabels)
-        let langfuseLabels = parseLangfuseLabelsJson(langfuseLabelsJson)
-        let lastSyncedAtTimestamp = try? row.get(toolLastSyncedAt)
-        let lastSyncedAt = lastSyncedAtTimestamp.map { Date(timeIntervalSince1970: $0) }
-        let capabilitiesJSON = try? row.get(toolCapabilities)
-        let parsedCapabilities = parseCapabilitiesJson(capabilitiesJSON)
-        let effectiveCapabilities = parsedCapabilities.isEmpty
-            ? PromptToolCapability.infer(fromName: name, prompt: prompt)
-            : parsedCapabilities
-
-        return PromptTool(
-            id: id,
-            name: name,
-            prompt: prompt,
-            capabilities: effectiveCapabilities,
-            shortcutKeyCode: shortcutKeyCode,
-            shortcutModifiers: shortcutModifiers,
-            isDefault: isDefault,
-            createdAt: createdAt,
-            updatedAt: updatedAt,
-            source: source,
-            remoteId: remoteId,
-            remoteAuthor: remoteAuthor,
-            remoteVotes: remoteVotes,
-            remoteUpdatedAt: remoteUpdatedAt,
-            langfuseName: langfuseName,
-            langfuseVersion: langfuseVersion,
-            langfuseLabels: langfuseLabels,
-            lastSyncedAt: lastSyncedAt
-        )
-    }
-
-    /// 解析 Langfuse labels JSON 字符串
-    private func parseLangfuseLabelsJson(_ json: String?) -> [String] {
-        guard let json = json,
-              let data = json.data(using: .utf8),
-              let labels = try? JSONDecoder().decode([String].self, from: data) else {
-            return []
-        }
-        return labels
-    }
-
-    /// 解析 capabilities JSON 字符串
-    private func parseCapabilitiesJson(_ json: String?) -> [PromptToolCapability] {
-        guard let json,
-              let data = json.data(using: .utf8),
-              let capabilities = try? JSONDecoder().decode([PromptToolCapability].self, from: data) else {
-            return []
-        }
-        return Array(Set(capabilities)).sorted(by: { $0.rawValue < $1.rawValue })
-    }
-
-    /// 将 Langfuse labels 编码为 JSON 字符串
-    private func encodeLangfuseLabels(_ labels: [String]) -> String? {
-        guard !labels.isEmpty,
-              let data = try? JSONEncoder().encode(labels),
-              let json = String(data: data, encoding: .utf8) else {
-            return nil
-        }
-        return json
-    }
-
-    /// 将 capabilities 编码为 JSON 字符串
-    private func encodeCapabilities(_ capabilities: [PromptToolCapability]) -> String? {
-        let normalized = Array(Set(capabilities)).sorted(by: { $0.rawValue < $1.rawValue })
-        guard !normalized.isEmpty,
-              let data = try? JSONEncoder().encode(normalized),
-              let json = String(data: data, encoding: .utf8) else {
-            return nil
-        }
-        return json
-    }
-
-    /// 插入新的 Prompt Tool
-    @discardableResult
-    func insertPromptTool(_ tool: PromptTool) -> Bool {
-        guard let db = db else { return false }
-
-        do {
-            // 准备 Langfuse labels JSON
-            let labelsJson = encodeLangfuseLabels(tool.langfuseLabels)
-            let capabilitiesJson = encodeCapabilities(tool.capabilities)
-
-            try db.run(promptToolsTable.insert(
-                toolId <- tool.id.uuidString,
-                toolName <- tool.name,
-                toolPrompt <- tool.prompt,
-                toolShortcutKeyCode <- Int(tool.shortcutKeyCode),
-                toolShortcutModifiers <- Int(tool.shortcutModifiers),
-                toolIsDefault <- tool.isDefault,
-                toolCreatedAt <- tool.createdAt.timeIntervalSince1970,
-                toolUpdatedAt <- tool.updatedAt.timeIntervalSince1970,
-                toolSource <- tool.source.rawValue,
-                toolRemoteId <- tool.remoteId,
-                toolRemoteAuthor <- tool.remoteAuthor,
-                toolRemoteVotes <- tool.remoteVotes,
-                toolRemoteUpdatedAt <- tool.remoteUpdatedAt?.timeIntervalSince1970,
-                toolLangfuseName <- tool.langfuseName,
-                toolLangfuseVersion <- tool.langfuseVersion,
-                toolLangfuseLabels <- labelsJson,
-                toolLastSyncedAt <- tool.lastSyncedAt?.timeIntervalSince1970,
-                toolCapabilities <- capabilitiesJson
-            ))
-            print("✅ Prompt Tool 插入成功: \(tool.name)")
-            NotificationCenter.default.post(name: .promptToolsDidUpdate, object: nil)
-            return true
-        } catch {
-            handleDatabaseError("Prompt Tool 插入失败", error: error)
-            return false
-        }
-    }
-
-    /// 更新 Prompt Tool
-    @discardableResult
-    func updatePromptTool(_ tool: PromptTool) -> Bool {
-        guard let db = db else { return false }
-
-        do {
-            // 准备 Langfuse labels JSON
-            let labelsJson = encodeLangfuseLabels(tool.langfuseLabels)
-            let capabilitiesJson = encodeCapabilities(tool.capabilities)
-
-            let query = promptToolsTable.filter(toolId == tool.id.uuidString)
-            try db.run(query.update(
-                toolName <- tool.name,
-                toolPrompt <- tool.prompt,
-                toolShortcutKeyCode <- Int(tool.shortcutKeyCode),
-                toolShortcutModifiers <- Int(tool.shortcutModifiers),
-                toolUpdatedAt <- Date().timeIntervalSince1970,
-                toolSource <- tool.source.rawValue,
-                toolRemoteId <- tool.remoteId,
-                toolRemoteAuthor <- tool.remoteAuthor,
-                toolRemoteVotes <- tool.remoteVotes,
-                toolRemoteUpdatedAt <- tool.remoteUpdatedAt?.timeIntervalSince1970,
-                toolLangfuseName <- tool.langfuseName,
-                toolLangfuseVersion <- tool.langfuseVersion,
-                toolLangfuseLabels <- labelsJson,
-                toolLastSyncedAt <- tool.lastSyncedAt?.timeIntervalSince1970,
-                toolCapabilities <- capabilitiesJson
-            ))
-            print("✅ Prompt Tool 更新成功: \(tool.name)")
-            NotificationCenter.default.post(name: .promptToolsDidUpdate, object: nil)
-            return true
-        } catch {
-            handleDatabaseError("Prompt Tool 更新失败", error: error)
-            return false
-        }
-    }
-
-    /// 删除 Prompt Tool
-    @discardableResult
-    func deletePromptTool(id: UUID) -> Bool {
-        guard let db = db else { return false }
-
-        do {
-            let query = promptToolsTable.filter(toolId == id.uuidString)
-            try db.run(query.delete())
-            print("✅ Prompt Tool 删除成功: \(id)")
-            NotificationCenter.default.post(name: .promptToolsDidUpdate, object: nil)
-            return true
-        } catch {
-            handleDatabaseError("Prompt Tool 删除失败", error: error)
-            return false
-        }
-    }
-
-    /// 初始化默认 Prompt Tools（首次启动时调用）
-    func initializeDefaultToolsIfNeeded() {
-        let existingTools = fetchAllPromptTools()
-        
-        // 如果已有工具，不再初始化
-        guard existingTools.isEmpty else {
-            print("📋 已存在 \(existingTools.count) 个 Prompt Tools，跳过初始化")
-            return
-        }
-
-        print("🆕 首次启动，初始化默认 Prompt Tools")
-        for tool in PromptTool.defaultTools {
-            insertPromptTool(tool)
-        }
-    }
-
-    /// 恢复默认 Prompt Tools
-    func restoreDefaultTools() {
-        let existingTools = fetchAllPromptTools()
-        let defaultTools = PromptTool.defaultTools
-
-        for defaultTool in defaultTools {
-            restoreOrCreateDefaultTool(defaultTool, existingTools: existingTools)
-        }
-
-        print("✅ 默认 Prompt Tools 已恢复")
-    }
-
-    /// 恢复或创建单个默认工具
-    private func restoreOrCreateDefaultTool(_ defaultTool: PromptTool, existingTools: [PromptTool]) {
-        if let existing = findExistingDefaultTool(defaultTool, in: existingTools) {
-            resetToDefaultPrompt(existing, defaultPrompt: defaultTool.prompt)
-        } else if !toolNameExists(defaultTool.name, in: existingTools) {
-            insertPromptTool(defaultTool)
-        }
-    }
-
-    /// 查找已存在的同名默认工具
-    private func findExistingDefaultTool(_ defaultTool: PromptTool, in existingTools: [PromptTool]) -> PromptTool? {
-        return existingTools.first(where: { $0.name == defaultTool.name && $0.isDefault })
-    }
-
-    /// 检查工具名称是否已存在
-    private func toolNameExists(_ name: String, in existingTools: [PromptTool]) -> Bool {
-        return existingTools.contains(where: { $0.name == name })
-    }
-
-    /// 重置为默认 prompt
-    private func resetToDefaultPrompt(_ tool: PromptTool, defaultPrompt: String) {
-        var updated = tool
-        updated.prompt = defaultPrompt
-        updatePromptTool(updated)
-    }
 }
 
 // MARK: - Notification Names

@@ -11,14 +11,10 @@ import KeyboardShortcuts
 /// 快捷键录制器视图
 struct HotKeyRecorderView: View {
     @State private var currentConfig = HotKeyPreferences.load()
-    @State private var showSuccessMessage = false
     @State private var isSyncingRecorder = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Constants.spacing16) {
-            Text(Strings.HotKey.title)
-                .font(.headline)
-
             KeyboardShortcuts.Recorder(for: HotKeyNames.main, onChange: applyRecordedShortcut)
 
             // 操作按钮
@@ -29,16 +25,7 @@ struct HotKeyRecorderView: View {
                 .buttonStyle(.bordered)
             }
 
-            // 成功提示
-            if showSuccessMessage {
-                Text(Strings.HotKey.successMessage)
-                    .font(.caption)
-                    .foregroundStyle(.green)
-            }
 
-            Text(Strings.HotKey.helpText)
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
         .onAppear {
             currentConfig = HotKeyPreferences.load()
@@ -68,7 +55,6 @@ struct HotKeyRecorderView: View {
             return
         }
 
-        showTransientSuccess()
     }
 
     private func resetToDefaultShortcut() {
@@ -79,7 +65,6 @@ struct HotKeyRecorderView: View {
             return
         }
 
-        showTransientSuccess()
     }
 
     private func restoreRecorderWithCurrentConfig() {
@@ -96,12 +81,7 @@ struct HotKeyRecorderView: View {
         }
     }
 
-    private func showTransientSuccess() {
-        showSuccessMessage = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + BusinessRules.TimeInterval.successMessageDisplay) {
-            showSuccessMessage = false
-        }
-    }
+
 }
 
 #Preview {

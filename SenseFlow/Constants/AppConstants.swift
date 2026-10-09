@@ -11,10 +11,10 @@ import Foundation
 /// 应用常量
 enum AppConstants {
     /// 产品名称
-    static let productName = "SenseFlow"
+    static let productName = "senseflow"
 
     /// 产品名称（英文）
-    static let productNameEnglish = "SenseFlow"
+    static let productNameEnglish = "senseflow"
 
     /// Bundle Identifier 前缀
     static let bundleIdentifierPrefix = "com.senseflow"

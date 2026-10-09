@@ -14,12 +14,9 @@ struct HotKeyConfig: Codable, Equatable {
     var keyCode: UInt32       // 虚拟键码
     var modifierFlags: UInt32 // Carbon 修饰键标志
 
-    /// 默认快捷键：Cmd+Shift+V
+    /// 默认唤出组合键：Cmd+Shift+V，保留地球键的系统操作。
     static var `default`: HotKeyConfig {
-        HotKeyConfig(
-            keyCode: 9,  // V key
-            modifierFlags: UInt32(cmdKey) | UInt32(shiftKey)
-        )
+        HotKeyConfig(keyCode: 9, modifierFlags: UInt32(cmdKey) | UInt32(shiftKey))
     }
 
     /// Smart 默认快捷键：Cmd+Ctrl+V
@@ -107,6 +104,11 @@ class HotKeyPreferences {
         guard let data = UserDefaults.standard.data(forKey: kind.storageKey),
               let config = try? JSONDecoder().decode(HotKeyConfig.self, from: data) else {
             return kind.defaultConfig
+        }
+        // Retire the experimental Globe binding without changing custom shortcuts.
+        if kind == .main, config.keyCode == UInt32(kVK_Function), config.modifierFlags == 0 {
+            save(keyCode: HotKeyConfig.default.keyCode, modifiers: HotKeyConfig.default.modifierFlags)
+            return .default
         }
         return config
     }

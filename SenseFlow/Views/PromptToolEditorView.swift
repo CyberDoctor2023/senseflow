@@ -40,7 +40,7 @@ struct PromptToolEditorView: View {
             // MARK: - Header
             HStack {
                 Text(isNewTool ? "新建 Prompt Tool" : "编辑 Prompt Tool")
-                    .font(.headline)
+                    .font(.pingFang(.headline))
                 Spacer()
             }
             .padding()
@@ -54,7 +54,7 @@ struct PromptToolEditorView: View {
                     // 名称
                     VStack(alignment: .leading, spacing: 4) {
                         Text("名称")
-                            .font(.subheadline)
+                            .font(.pingFang(.subheadline))
                             .foregroundColor(.secondary)
                         TextField("例如：Markdown 格式化", text: $name)
                             .textFieldStyle(.roundedBorder)
@@ -63,11 +63,11 @@ struct PromptToolEditorView: View {
                     // Prompt
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Prompt 模板")
-                            .font(.subheadline)
+                            .font(.pingFang(.subheadline))
                             .foregroundColor(.secondary)
 
                         TextEditor(text: $prompt)
-                            .font(.system(.body, design: .monospaced))
+                            .font(.pingFang(.body))
                             .frame(minHeight: Constants.TextEditor.minHeight)
                             .overlay(
                                 RoundedRectangle(cornerRadius: Constants.cornerRadiusSmall)
@@ -75,14 +75,14 @@ struct PromptToolEditorView: View {
                             )
 
                         Text("用户的剪贴板内容会作为「用户输入」追加到此 Prompt 后面")
-                            .font(.caption)
+                            .font(.pingFang(.caption))
                             .foregroundColor(.secondary)
                     }
 
                     // 能力标签
                     VStack(alignment: .leading, spacing: 8) {
                         Text("能力标签")
-                            .font(.subheadline)
+                            .font(.pingFang(.subheadline))
                             .foregroundColor(.secondary)
 
                         HStack(spacing: 8) {
@@ -94,7 +94,7 @@ struct PromptToolEditorView: View {
                                         Image(systemName: selectedCapabilities.contains(capability) ? "checkmark.circle.fill" : "circle")
                                         Text(capability.displayName)
                                     }
-                                    .font(.caption)
+                                    .font(.pingFang(.caption))
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 6)
                                     .background(selectedCapabilities.contains(capability) ? Color.accentColor.opacity(0.15) : Color.gray.opacity(0.12))
@@ -105,14 +105,14 @@ struct PromptToolEditorView: View {
                         }
 
                         Text("推荐时优先使用能力标签，再回退到名称/Prompt启发式")
-                            .font(.caption)
+                            .font(.pingFang(.caption))
                             .foregroundColor(.secondary)
                     }
 
                     // 快捷键
                     VStack(alignment: .leading, spacing: 4) {
                         Text("快捷键（可选）")
-                            .font(.subheadline)
+                            .font(.pingFang(.subheadline))
                             .foregroundColor(.secondary)
 
                         ShortcutRecorderField(
@@ -216,7 +216,7 @@ struct ShortcutRecorderField: View {
 
             if showNoChangeHint {
                 Text("快捷键未变更：通常表示该组合被系统/菜单占用，或本次录制已取消。")
-                    .font(.caption)
+                    .font(.pingFang(.caption))
                     .foregroundStyle(.orange)
             }
         }

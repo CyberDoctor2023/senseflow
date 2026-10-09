@@ -9,7 +9,7 @@ import Cocoa
 import SwiftUI
 
 /// 悬浮窗口管理器（单例）
-class FloatingWindowManager {
+@MainActor class FloatingWindowManager {
 
     // MARK: - Singleton
 
@@ -23,9 +23,36 @@ class FloatingWindowManager {
     private var activeWindow: NSPanel?  // 当前活跃的窗口（A 或 B）
 
     private var sharedViewModel: ClipboardListViewModel?  // 共享 ViewModel（DI 模式，用于多窗口数据同步）
+    let workspace = WorkspaceWindowCoordinator()
+    let onboarding: ClipboardOnboardingCoordinator
+    private var tutorial: ClipboardTutorialSession?
+    private var tutorialHandoffTask: Task<Void, Never>?
+    lazy var documentPreview: DocumentPreviewCoordinator = {
+        let preview = DocumentPreviewCoordinator(repository: documentRepository, writer: clipboardWriter,
+            host: DocumentWindowHost(workspace: workspace))
+        return preview
+    }()
+    private lazy var documentRepository = DocumentRepository(store: .shared)
+    private lazy var clipboardWriter: ClipboardWriter = NSPasteboardAdapter(monitor: .shared)
+    private lazy var historyActions = HistoryActionCoordinator(documents: documentPreview, repository: documentRepository, writer: clipboardWriter, onPaste: { [weak self] in
+        if self?.isPinned != true { self?.hideWindowImmediately() }
+        AutoPasteManager.shared.performAutoPaste(delay: 0.5)
+    }, onDragEnded: { [weak self] in
+        DispatchQueue.main.async { [weak self] in self?.hideIfOutsideWorkspace() }
+    })
+    private lazy var thumbnails = ClipboardThumbnailLoader(repository: documentRepository)
     private let repository: ClipboardRepositoryProtocol  // 数据仓库（依赖倒置）
 
-    var isPinned = false  // 窗口是否固定（固定后失去焦点不会自动隐藏）
+    /// A/B windows share the model's single pin state.
+    var isPinned: Bool {
+        get { sharedViewModel?.isWindowPinned ?? false }
+        set {
+            sharedViewModel?.isWindowPinned = newValue
+            if !newValue {
+                DispatchQueue.main.async { [weak self] in self?.hideIfOutsideWorkspace() }
+            }
+        }
+    }
 
     // MARK: - Layout Configuration
 
@@ -44,6 +71,7 @@ class FloatingWindowManager {
     private init(layoutConfig: WindowLayoutConfigurable = WindowLayoutConfig.default) {
         self.layoutConfig = layoutConfig
         self.repository = DatabaseClipboardRepository()
+        self.onboarding = ClipboardOnboardingCoordinator()
 
         // 初始化辅助类
         self.windowFactory = WindowFactory(layoutConfig: layoutConfig, repository: repository)
@@ -56,23 +84,100 @@ class FloatingWindowManager {
         )
         self.appStateManager = AppStateManager()
 
+        onboarding.onComplete = { [weak self] in
+            self?.completeTutorial()
+        }
         setupNotifications()
     }
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
     // MARK: - Public Methods
 
     /// 显示窗口
     func showWindow() {
+        guard tutorialHandoffTask == nil else { return }
+        if !onboarding.isComplete {
+            showTutorial()
+            return
+        }
         guard !isWindowVisible else { return }
 
         appStateManager.savePreviousApp()
         ensureWindowCreated()
         windowLifecycle.configureWindowForDisplay(activeWindow!, windowHeight: unifiedWindowHeight())
-        windowLifecycle.displayWindow(activeWindow!)
+        documentPreview.historyShown()
+        windowLifecycle.displayWindow(activeWindow!) { [weak self] in
+            self?.hideIfOutsideWorkspace()
+        }
+    }
+
+    /// Starts a fresh example workspace without exposing real history.
+    func restartTutorial() {
+        tutorialHandoffTask?.cancel()
+        tutorialHandoffTask = nil
+        tutorial?.close()
+        tutorial = nil
+        onboarding.restart()
+        showTutorial()
+    }
+    private func completeTutorial() {
+        SystemCaptureService.shared.start()
+        guard tutorialHandoffTask == nil else { return }
+        guard let session = tutorial else {
+            ClipboardMonitor.shared.resumeAfterTutorial()
+            TextSelectionMonitor.shared.startMonitoring()
+            showWindow()
+            return
+        }
+        ensureWindowCreated()
+        guard let model = sharedViewModel, let window = activeWindow else { return }
+        tutorialHandoffTask = Task { [weak self, weak session] in
+            await model.loadItems()
+            guard let self, let session, !Task.isCancelled,
+                  self.tutorial === session, self.onboarding.isComplete else { return }
+            self.tutorialHandoffTask = nil
+            guard session.isHistoryVisible else {
+                session.close()
+                self.tutorial = nil
+                ClipboardMonitor.shared.resumeAfterTutorial()
+                TextSelectionMonitor.shared.startMonitoring()
+                return
+            }
+            let handoff = ClipboardHistoryHandoff(outgoingModel: session.historyModel) { [weak self, weak session] in
+                guard let self, let session, self.tutorial === session else { return }
+                session.close()
+                self.tutorial = nil
+                ClipboardMonitor.shared.resumeAfterTutorial()
+                TextSelectionMonitor.shared.startMonitoring()
+            }
+            self.windowFactory.installContent(on: window, viewModel: model, handoff: handoff,
+                onItemSelected: { [weak self] _ in self?.hideWindow() })
+            window.setFrame(session.historyFrame, display: false)
+            window.alphaValue = 1
+            self.documentPreview.historyShown()
+            window.makeKeyAndOrderFront(nil)
+            session.concealForHandoff()
+        }
+    }
+    private func showTutorial() {
+        SystemCaptureService.shared.stop()
+        activeWindow?.orderOut(nil)
+        if activeWindow != nil { documentPreview.historyHidden() }
+        ClipboardMonitor.shared.stopMonitoring()
+        TextSelectionMonitor.shared.stopMonitoring()
+        if tutorial == nil {
+            tutorial = ClipboardTutorialSession(tour: onboarding,
+                writer: NSPasteboardAdapter(monitor: .shared),
+                onPaste: { [weak self] in
+                    self?.hideWindow()
+                    AutoPasteManager.shared.performAutoPaste()
+                })
+        }
+        tutorial?.show()
     }
 
     /// 确保窗口已创建（双窗口池：A 和 B）
@@ -80,7 +185,7 @@ class FloatingWindowManager {
         if windowA == nil || windowB == nil {
             // 确保 ViewModel 已创建
             if sharedViewModel == nil {
-                sharedViewModel = ClipboardListViewModel(repository: repository)
+                sharedViewModel = ClipboardListViewModel(repository: repository, actions: historyActions, thumbnails: thumbnails)
             }
 
             // 使用 WindowFactory 创建窗口池（包含完整配置）
@@ -92,6 +197,8 @@ class FloatingWindowManager {
             )
             self.windowA = windowPair.windowA
             self.windowB = windowPair.windowB
+            workspace.register(windowPair.windowA)
+            workspace.register(windowPair.windowB)
 
             // 配置窗口属性
             windowConfigurator.configurePanel(windowA!)
@@ -115,20 +222,56 @@ class FloatingWindowManager {
 
     /// 隐藏窗口（对称的下滑 + 淡出动画）
     func hideWindow() {
+        historyActions.quickLookURL = nil
+        if tutorialHandoffTask != nil { tutorial?.hide() }
+        if !onboarding.isComplete { tutorial?.hide(); return }
         guard let window = activeWindow else { return }
+        documentPreview.historyHidden()
         windowLifecycle.hideWindow(window)
     }
 
     /// 隐藏窗口并激活前一个应用（用于粘贴场景，也使用对称动画）
     func hideWindowImmediately() {
+        historyActions.quickLookURL = nil
         guard let window = activeWindow else { return }
+        documentPreview.historyHidden()
         windowLifecycle.hideWindow(window) {
             self.appStateManager.activatePreviousApp()
         }
     }
 
+    /// Explicit downward edge input uses the existing dismissal and draft protection.
+    func dismissFromTrackpad() {
+        guard tutorial?.isVisible == true || isWindowVisible else { return }
+        hideWindow()
+    }
+
+    /// The physical top-edge gesture reveals the same workspace without toggling it closed.
+    func revealFromTrackpad() {
+        if onboarding.step == .launch {
+            onboarding.launchRequested()
+            showTutorial()
+        } else {
+            showWindow()
+        }
+    }
+
+    /// Advances the tutorial only when its registered launch shortcut is actually pressed.
+    func launchShortcutPressed() {
+        if onboarding.step == .launch {
+            onboarding.launchRequested()
+            showTutorial()
+        } else {
+            toggleWindow()
+        }
+    }
+
     /// 切换窗口显示/隐藏
     func toggleWindow() {
+        if !onboarding.isComplete {
+            if tutorial?.isVisible == true { tutorial?.hide() } else { showTutorial() }
+            return
+        }
         if activeWindow?.isVisible == true {
             // 窗口已显示，检查鼠标是否在不同屏幕
             let mouseScreen = windowPositioner.detectActiveScreen()
@@ -186,6 +329,13 @@ class FloatingWindowManager {
             object: nil
         )
 
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(handleApplicationActivated),
+            name: NSWorkspace.didActivateApplicationNotification,
+            object: nil
+        )
+
         // 监听屏幕配置变化（外接屏幕连接/断开）
         NotificationCenter.default.addObserver(
             self,
@@ -197,26 +347,36 @@ class FloatingWindowManager {
 
     @objc private func handleScreenConfigurationChange(_ notification: Notification) {
         windowPositioner.clearScreenCache()
+        documentPreview.screenChanged()
+    }
+
+    @objc private func handleApplicationActivated(_ notification: Notification) {
+        guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+              app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
+        DispatchQueue.main.async { [weak self] in self?.hideIfOutsideWorkspace() }
+    }
+
+    private func hideIfOutsideWorkspace() {
+        let outsideApp = NSWorkspace.shared.frontmostApplication?.processIdentifier != ProcessInfo.processInfo.processIdentifier
+        if tutorialHandoffTask != nil {
+            if outsideApp { tutorial?.hide() }
+            return
+        }
+        if !onboarding.isComplete {
+            if outsideApp { tutorial?.outsideApplicationActivated() }
+            return
+        }
+        // System Quick Look owns its own key window outside our registered workspace.
+        if !outsideApp, historyActions.quickLookURL != nil { return }
+        guard windowLifecycle.canAutoHide, !isPinned, !historyActions.isDragging,
+              activeWindow?.isVisible == true,
+              outsideApp || !workspace.hasKeyWindow else { return }
+        hideWindow()
     }
 
     @objc private func handleWindowResignKey(_ notification: Notification) {
-        // 处理窗口 A/B 的 resignKey
-        guard let resignedWindow = notification.object as? NSWindow,
-              (resignedWindow === windowA || resignedWindow === windowB),
-              windowLifecycle.canAutoHide,
-              !isPinned,  // 固定时不自动隐藏
-              activeWindow?.isVisible == true else {
-            return
-        }
-
-        // 同步检查：焦点是否转移到了我们的另一个窗口
-        // 移除异步延迟，避免 glassEffect 降级导致的卡顿
-        if let newKey = NSApp.keyWindow,
-           (newKey === self.windowA || newKey === self.windowB) {
-            return  // 焦点在我们窗口内部转移，不关闭
-        }
-
-        // 立即隐藏，避免视觉降级
-        self.hideWindow()
+        guard let window = notification.object as? NSWindow,
+              workspace.contains(window) else { return }
+        DispatchQueue.main.async { [weak self] in self?.hideIfOutsideWorkspace() }
     }
 }

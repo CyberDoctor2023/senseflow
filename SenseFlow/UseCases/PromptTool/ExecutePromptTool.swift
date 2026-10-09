@@ -19,7 +19,7 @@
 //
 //  2. 单一职责原则（SRP）：只负责"执行工具"这一个业务场景
 //     - 不负责数据持久化（Repository 的职责）
-//     - 不负责快捷键注册（RegisterToolHotKey 的职责）
+//     - 不负责快捷键注册（AppHotKeyCoordinator 的职责）
 //     - 不负责 UI 交互（Coordinator 的职责）
 //
 //  3. 开闭原则（OCP）：对扩展开放，对修改关闭
@@ -149,13 +149,9 @@ final class ExecutePromptTool: Sendable {
         // 为什么用 await？写入剪贴板可能涉及主线程操作
         await clipboardWriter.write(result)
 
-        // 【步骤 5】自动粘贴（如果启用）
-        // 检查用户设置，决定是否自动执行 Cmd+V
-        let autoPasteEnabled = UserDefaults.standard.object(forKey: "auto_paste_enabled") as? Bool ?? true
-        if autoPasteEnabled {
-            await MainActor.run {
-                AutoPasteManager.shared.performAutoPaste(delay: 0.15)
-            }
+        // Tool output is pasted through the same default interaction as a history card.
+        await MainActor.run {
+            AutoPasteManager.shared.performAutoPaste(delay: 0.15)
         }
 
         // 【步骤 6】显示成功通知

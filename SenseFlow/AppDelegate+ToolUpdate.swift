@@ -52,7 +52,7 @@ extension AppDelegate {
                     print("✅ 自动安装了 \(result.success) 个推荐工具")
 
                     NotificationService.shared.showSuccess(
-                        title: "欢迎使用 SenseFlow",
+                        title: "欢迎使用 senseflow",
                         body: "已为你安装 \(result.success) 个热门社区工具"
                     )
                 }

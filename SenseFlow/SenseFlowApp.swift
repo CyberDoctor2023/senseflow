@@ -20,6 +20,7 @@ struct SenseFlowApp: App {
         // MenuBarExtra for status bar icon with animated dots
         MenuBarExtra {
             MenuBarContentView()
+                .font(.pingFang(size: 13))
                 .environmentObject(dependencies)
         } label: {
             MenuBarIconView()
@@ -33,6 +34,7 @@ struct SenseFlowApp: App {
                 .environmentObject(dependencies)
                 .frame(minWidth: Constants.SettingsWindow.minWidth, minHeight: Constants.SettingsWindow.minHeight)
         }
+        .windowStyle(.hiddenTitleBar)
         .defaultSize(
             width: Constants.SettingsWindow.defaultWidth,
             height: Constants.SettingsWindow.defaultHeight
@@ -52,10 +54,9 @@ struct MenuBarContentView: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Button("打开历史 (⌘⌥V)") {
+        Button("打开历史 (\(HotKeyPreferences.load().displayString))") {
             FloatingWindowManager.shared.toggleWindow()
         }
-        .keyboardShortcut("v", modifiers: [.command, .option])
 
         Divider()
 
@@ -64,6 +65,11 @@ struct MenuBarContentView: View {
             NSApp.activate(ignoringOtherApps: true)
         }
         .keyboardShortcut(",")
+
+        Button("重新体验引导") {
+            FloatingWindowManager.shared.restartTutorial()
+        }
+
 
         Divider()
 
@@ -82,14 +88,17 @@ struct MenuBarContentView: View {
     private func clearHistory() {
         let alert = NSAlert()
         alert.messageText = "清空历史记录"
-        alert.informativeText = "确定要删除所有剪贴板历史记录吗？此操作无法撤销。"
+        alert.informativeText = "确定要删除全部历史记录、未归档草稿及当前打开文档的修改吗？此操作无法撤销。"
         alert.alertStyle = .warning
         alert.addButton(withTitle: "清空")
         alert.addButton(withTitle: "取消")
 
         let response = alert.runModal()
         if response == .alertFirstButtonReturn {
-            DatabaseManager.shared.clearAllItems()
+            FloatingWindowManager.shared.documentPreview.historyCleared()
+            Task {
+                _ = try? await DatabaseManager.shared.performStoreOperation { DatabaseManager.shared.clearAllItems() }
+            }
         }
     }
 }

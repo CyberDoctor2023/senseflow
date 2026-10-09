@@ -106,12 +106,12 @@ struct SearchBarContainer<Leading: View, Trailing: View>: View {
         HStack(spacing: 8) {
             // Search icon
             Image(systemName: "magnifyingglass")
-                .font(.system(size: config.iconSize))
+                .font(.pingFang(size: config.iconSize))
                 .foregroundStyle(.secondary)
 
             // Text field
             TextField(placeholder, text: $searchText)
-                .font(.system(size: config.fontSize))
+                .font(.pingFang(size: config.fontSize))
                 .textFieldStyle(.plain)
                 .focused(focused ?? $internalFocused)
 
@@ -121,7 +121,7 @@ struct SearchBarContainer<Leading: View, Trailing: View>: View {
                     searchText = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: config.iconSize))
+                        .font(.pingFang(size: config.iconSize))
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)

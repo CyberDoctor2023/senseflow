@@ -21,10 +21,10 @@ struct SmartRecommendationView: View {
             // Header
             HStack {
                 Image(systemName: "sparkles")
-                    .font(.title2)
+                    .font(.pingFang(.title2))
                     .foregroundStyle(.blue)
                 Text(Strings.SmartRecommendation.title)
-                    .font(.headline)
+                    .font(.pingFang(.headline))
             }
 
             Divider()

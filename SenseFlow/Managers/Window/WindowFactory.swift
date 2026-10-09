@@ -7,7 +7,6 @@
 
 import Cocoa
 import SwiftUI
-import SwiftUI
 
 /// 窗口工厂：负责创建和初始化窗口
 ///
@@ -26,17 +25,20 @@ import SwiftUI
 /// - topHeight: 顶部搜索栏高度（50pt）
 /// - gap: 透明间隔高度（4pt）
 /// - cardAreaHeight: 主容器高度（由卡片配置计算）
-final class WindowFactory {
+@MainActor final class WindowFactory {
 
     private let layoutConfig: WindowLayoutConfigurable
     private let repository: ClipboardRepositoryProtocol
+    private let onboarding: ClipboardOnboardingCoordinator?
 
     init(
         layoutConfig: WindowLayoutConfigurable,
-        repository: ClipboardRepositoryProtocol
+        repository: ClipboardRepositoryProtocol,
+        onboarding: ClipboardOnboardingCoordinator? = nil
     ) {
         self.layoutConfig = layoutConfig
         self.repository = repository
+        self.onboarding = onboarding
     }
 
     /// 创建窗口池（A 和 B 两个窗口）
@@ -56,7 +58,7 @@ final class WindowFactory {
     }
 
     /// 创建单个窗口（完整配置，包括 contentView）
-    private func createWindow(
+    func createWindow(
         sharedViewModel: ClipboardListViewModel,
         onItemSelected: @escaping (ClipboardItem) -> Void
     ) -> NSPanel {
@@ -77,15 +79,27 @@ final class WindowFactory {
     /// 创建 SwiftUI 内容视图
     private func createContentView(
         viewModel: ClipboardListViewModel,
-        onItemSelected: @escaping (ClipboardItem) -> Void
-    ) -> UnifiedPanelView {
+        onItemSelected: @escaping (ClipboardItem) -> Void,
+        handoff: ClipboardHistoryHandoff? = nil
+    ) -> some View {
         return UnifiedPanelView(
             viewModel: viewModel,
             mainContainerConfig: layoutConfig.mainContainer,
             cardConfig: layoutConfig.cardArea,
             topConfig: layoutConfig.topBackground,
-            onItemSelected: onItemSelected
+            onItemSelected: onItemSelected,
+            handoff: handoff
         )
+        .environment(\.clipboardOnboarding, onboarding)
+    }
+
+    /// Installs preloaded history with an optional departing tutorial layer.
+    func installContent(on panel: NSPanel, viewModel: ClipboardListViewModel,
+                        handoff: ClipboardHistoryHandoff?, onItemSelected: @escaping (ClipboardItem) -> Void) {
+        let host = NSHostingView(rootView: createContentView(viewModel: viewModel,
+            onItemSelected: onItemSelected, handoff: handoff))
+        host.clipsToBounds = false
+        panel.contentView = host
     }
 
     /// 创建 NSPanel

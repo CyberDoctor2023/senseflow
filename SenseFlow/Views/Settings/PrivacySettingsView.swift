@@ -1,226 +1,79 @@
-//
-//  PrivacySettingsView.swift
-//  SenseFlow
-//
-//  Created by Claude on 2026-01-16.
-//  Updated on 2026-02-10 for @Observable + @Bindable pattern
-//
-
 import SwiftUI
-import Cocoa                // For NSWindow, NSHostingController
+import AppKit
+import UniformTypeIdentifiers
 
-/// 隐私设置（使用 @Bindable 接收 SettingsModel 双向绑定）
 struct PrivacySettingsView: View {
     @Bindable var model: SettingsModel
-    @ObservedObject private var permissionCoordinator = PermissionStatusCoordinator.shared
-    @State private var skipOnboardingPermissions = false
-
+    @ObservedObject private var permissions = PermissionStatusCoordinator.shared
+    @State private var appNames: [String: String] = [:]
+    private var excludedApps: [String] {
+        Array(Set(model.filterAppListString.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty })).sorted()
+    }
     var body: some View {
-        Form {
-                // 隐私权限
-                Section(Strings.PrivacySettings.privacySection) {
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                        HStack(spacing: DesignSystem.Spacing.sm) {
-                            Image(systemName: permissionCoordinator.snapshot.accessibilityGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                                .foregroundStyle(permissionCoordinator.snapshot.accessibilityGranted ? .green : .orange)
-                                .symbolRenderingMode(.multicolor)
-                                .font(.caption)
-
-                            Text(permissionCoordinator.snapshot.accessibilityGranted ? Strings.PrivacySettings.accessibilityGranted : Strings.PrivacySettings.accessibilityDenied)
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                        }
-
-                        Text(Strings.PrivacySettings.accessibilityDescription)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(.vertical, DesignSystem.Spacing.xs)
-
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                        HStack(spacing: DesignSystem.Spacing.sm) {
-                            Image(systemName: permissionCoordinator.snapshot.screenRecordingGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                                .foregroundStyle(permissionCoordinator.snapshot.screenRecordingGranted ? .green : .orange)
-                                .symbolRenderingMode(.multicolor)
-                                .font(.caption)
-
-                            Text(permissionCoordinator.snapshot.screenRecordingGranted ? Strings.PrivacySettings.screenRecordingGranted : Strings.PrivacySettings.screenRecordingDenied)
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                        }
-
-                        Text(Strings.PrivacySettings.screenRecordingDescription)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(.vertical, DesignSystem.Spacing.xs)
-
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                        HStack(spacing: DesignSystem.Spacing.sm) {
-                            Image(systemName: permissionCoordinator.snapshot.notificationGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                                .foregroundStyle(permissionCoordinator.snapshot.notificationGranted ? .green : .orange)
-                                .symbolRenderingMode(.multicolor)
-                                .font(.caption)
-
-                            Text(permissionCoordinator.snapshot.notificationGranted ? Strings.PrivacySettings.notificationGranted : Strings.PrivacySettings.notificationDenied)
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                        }
-
-                        Text(Strings.PrivacySettings.notificationDescription)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                    }
-                    .padding(.vertical, DesignSystem.Spacing.xs)
-                }
-
-                // 权限引导
-                Section(Strings.PrivacySettings.guideSection) {
-                    if skipOnboardingPermissions {
-                        HStack(spacing: DesignSystem.Spacing.sm) {
-                            Image(systemName: "info.circle.fill")
-                                .foregroundStyle(.blue)
-                                .font(.caption)
-
-                            Text(Strings.PrivacySettings.guideStatus)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Text(Strings.PrivacySettings.guideDescription)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    #if DEBUG
-                    Button(Strings.PrivacySettings.testButton) {
-                        print("🧪 测试权限检查按钮被点击")
-                    }
-                    .compatibleButtonStyle()
-                    #endif
-
-                    Button(Strings.PrivacySettings.restoreGuideButton) {
-                        restoreOnboarding()
-                    }
-                    .compatibleButtonStyle(prominent: true)
-                    .help(Strings.PrivacySettings.restoreGuideHelp)
-                }
-
-                // 敏感数据过滤
-                Section(Strings.PrivacySettings.sensitiveDataSection) {
-                    Text(Strings.PrivacySettings.sensitiveDataDescription)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                        Text("[开发者] 自动过滤的数据类型：")
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundStyle(.secondary)
-
-                        Text("• org.nspasteboard.ConcealedType")
-                            .font(.system(size: DesignSystem.FontSize.small, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                        Text("  （密码/隐藏数据）")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-
-                        Text("• org.nspasteboard.TransientType")
-                            .font(.system(size: DesignSystem.FontSize.small, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                        Text("  （临时数据）")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-
-                        Text("• org.nspasteboard.AutoGeneratedType")
-                            .font(.system(size: DesignSystem.FontSize.small, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                        Text("  （自动生成数据）")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                    .padding(.vertical, DesignSystem.Spacing.xs)
-
-                    Text(Strings.PrivacySettings.sensitiveDataNote)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                // 应用过滤
-                Section(Strings.PrivacySettings.appFilterSection) {
-                    Text(Strings.PrivacySettings.appFilterDescription)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    TextEditor(text: $model.filterAppListString)
-                        .frame(height: DesignSystem.TextEditor.height)
-                        .font(.system(size: DesignSystem.FontSize.small, design: .monospaced))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: DesignSystem.CornerRadius.small)
-                                .stroke(Color(NSColor.separatorColor), lineWidth: DesignSystem.BorderWidth.thin)
-                        )
-                        .help(Strings.PrivacySettings.appFilterPlaceholder)
-
-                    Text(Strings.PrivacySettings.appFilterHelp)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+        SettingsFormContainer {
+            SettingsSection(title: "数据存储") {
+                Text("历史记录保存在本机。")
+                    .font(.pingFang(size: 13))
+                Text("系统标记为密码、隐藏或临时的内容不会进入历史。使用在线工具时，处理所需的内容会发送给你选择的服务。")
+                    .font(.pingFang(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-            .formStyle(.grouped)
-            .compatibleControlSize()
-            .onAppear {
-                permissionCoordinator.start(consumer: .settings)
-                syncGuideState()
+            SettingsSection(title: "排除的应用") {
+                if excludedApps.isEmpty {
+                    Text("未添加应用。").font(.pingFang(.caption)).foregroundStyle(.secondary)
+                }
+                ForEach(excludedApps, id: \.self) { identifier in
+                    HStack {
+                        Text(appNames[identifier] ?? "已排除的应用")
+                        Spacer()
+                        Button {
+                            model.filterAppListString = excludedApps.filter { $0 != identifier }.joined(separator: "\n")
+                        } label: { Image(systemName: "minus.circle") }
+                        .buttonStyle(.plain).foregroundStyle(.secondary)
+                        .accessibilityLabel("移除 \(appNames[identifier] ?? "应用")")
+                    }
+                }
+                Button("添加应用…", systemImage: "plus") { chooseApp() }.buttonStyle(.bordered)
             }
-            .onDisappear {
-                permissionCoordinator.stop(consumer: .settings)
+            SettingsSection(title: "系统权限") {
+                permissionRow("辅助功能", detail: "用于把内容填入其他应用的输入框。", granted: permissions.snapshot.accessibilityGranted, anchor: "Privacy_Accessibility")
             }
-            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                syncGuideState()
-            }
-    }
-
-    // MARK: - Private Methods
-
-    private func syncGuideState() {
-        skipOnboardingPermissions = UserDefaults.standard.bool(forKey: UserDefaultsKeys.skipOnboardingPermissions)
-    }
-
-    private func restoreOnboarding() {
-        print("🔄 恢复权限引导被调用")
-        UserDefaults.standard.set(false, forKey: UserDefaultsKeys.skipOnboardingPermissions)
-        print("✅ UserDefaults 已重置")
-
-        guard let appDelegate = NSApplication.shared.delegate as? AppDelegate else {
-            print("⚠️ AppDelegate 转换失败: \(type(of: NSApplication.shared.delegate))")
-            OnboardingWindowManager.shared.showWindow()
-            print("✅ 直接创建 Onboarding 窗口")
-            return
         }
-
-        print("✅ 找到 AppDelegate")
-        appDelegate.showOnboardingWindow()
-        syncGuideState()
-        print("✅ skipOnboardingPermissions 标志已设置为 false")
+        .onAppear { permissions.start(consumer: .settings); refreshNames() }
+        .onDisappear { permissions.stop(consumer: .settings) }
+        .onChange(of: model.filterAppListString) { _, _ in refreshNames() }
     }
-
-}
-
-#Preview {
-    if #available(macOS 26.0, *) {
-        PrivacySettingsView(model: SettingsModel())
-            .frame(
-                width: DesignSystem.WindowSize.settingsWindow.width,
-                height: DesignSystem.WindowSize.settingsWindow.height
-            )
-    } else {
-        Text(Strings.PrivacySettings.previewFallback)
+    private func permissionRow(_ title: String, detail: String, granted: Bool, anchor: String) -> some View {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(title).font(.pingFang(size: 13, weight: .medium))
+                    Text(granted ? "已授权" : "未授权").font(.pingFang(.caption)).foregroundStyle(.secondary)
+                }
+                Text(detail).font(.pingFang(.caption)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Button("系统设置…") {
+                guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") else { return }
+                NSWorkspace.shared.open(url)
+            }.buttonStyle(.bordered)
+        }
+    }
+    private func refreshNames() {
+        appNames = Dictionary(uniqueKeysWithValues: excludedApps.map { identifier in
+            let name = NSWorkspace.shared.urlForApplication(withBundleIdentifier: identifier)?.deletingPathExtension().lastPathComponent
+            return (identifier, name ?? "未安装的应用")
+        })
+    }
+    private func chooseApp() {
+        let picker = NSOpenPanel()
+        picker.allowedContentTypes = [.applicationBundle]
+        picker.directoryURL = URL(fileURLWithPath: "/Applications")
+        picker.canChooseDirectories = false
+        picker.prompt = "添加"
+        picker.begin { response in
+            guard response == .OK, let url = picker.url, let identifier = Bundle(url: url)?.bundleIdentifier else { return }
+            model.filterAppListString = Array(Set(excludedApps + [identifier])).sorted().joined(separator: "\n")
+        }
     }
 }

@@ -55,7 +55,7 @@ struct MainContainerLayoutConfig {
 
     /// 计算主容器高度（卡片高度 + 上下边距）
     func windowHeight(cardConfig: CardAreaLayoutConfig) -> CGFloat {
-        return cardConfig.cardHeight + cardConfig.backgroundTopOffset + cardConfig.backgroundBottomOffset
+        return cardConfig.cardHeight + 2 * cardConfig.contentInset
     }
 
     /// 计算主容器宽度（屏幕宽度 - 左右边距）

@@ -64,7 +64,7 @@ struct CommunityToolsBrowserView: View {
         VStack(spacing: 12) {
             HStack {
                 Text("社区工具库")
-                    .font(.title2)
+                    .font(.pingFang(.title2))
                     .fontWeight(.semibold)
 
                 Spacer()
@@ -94,9 +94,9 @@ struct CommunityToolsBrowserView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("发现 \(info.newTools.count + info.updatedTools.count) 个更新")
-                    .font(.headline)
+                    .font(.pingFang(.headline))
                 Text("\(info.newTools.count) 个新工具，\(info.updatedTools.count) 个工具更新")
-                    .font(.caption)
+                    .font(.pingFang(.caption))
                     .foregroundColor(.secondary)
             }
 
@@ -127,7 +127,7 @@ struct CommunityToolsBrowserView: View {
     private func errorView(message: String) -> some View {
         VStack(spacing: 16) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 48))
+                .font(.pingFang(size: 48))
                 .foregroundColor(.orange)
 
             Text(message)
@@ -246,23 +246,23 @@ struct ToolCard: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(tool.title)
-                        .font(.headline)
+                        .font(.pingFang(.headline))
 
                     HStack(spacing: 8) {
                         if let author = tool.author.name {
                             Label(author, systemImage: "person.fill")
-                                .font(.caption)
+                                .font(.pingFang(.caption))
                                 .foregroundColor(.secondary)
                         }
 
                         if tool.author.verified {
                             Image(systemName: "checkmark.seal.fill")
                                 .foregroundColor(.blue)
-                                .font(.caption)
+                                .font(.pingFang(.caption))
                         }
 
                         Label("\(tool.voteCount)", systemImage: "heart.fill")
-                            .font(.caption)
+                            .font(.pingFang(.caption))
                             .foregroundColor(.secondary)
                     }
                 }
@@ -286,7 +286,7 @@ struct ToolCard: View {
             // 描述
             if let description = tool.description {
                 Text(description)
-                    .font(.subheadline)
+                    .font(.pingFang(.subheadline))
                     .foregroundColor(.secondary)
                     .lineLimit(2)
             }
@@ -324,7 +324,7 @@ struct TagChip: View {
 
     var body: some View {
         Text(tag.name)
-            .font(.caption)
+            .font(.pingFang(.caption))
             .padding(.horizontal, Constants.spacing8)
             .padding(.vertical, Constants.spacing4)
             .background(Color(hex: tag.color).opacity(0.2))

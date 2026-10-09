@@ -12,6 +12,8 @@ import SwiftUI
 struct PromptToolsSettingsView: View {
     @EnvironmentObject var dependencies: DependencyEnvironment
     @State private var tools: [PromptTool] = []
+    @State private var connectionExpanded = false
+    @State private var connectionLoaded = false
 
     // 使用独立的状态管理编辑模式
     enum EditorMode: Identifiable {
@@ -74,14 +76,13 @@ struct PromptToolsSettingsView: View {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                     Text(Strings.PromptToolsSettings.codexAuthTitle)
                     Text(codexAuthStatus.message)
-                        .font(.caption)
+                        .font(.pingFang(.caption))
                         .foregroundStyle(.secondary)
                 }
 
                 Spacer()
             }
 
-            codexMetadataView
 
             HStack {
                 Button {
@@ -117,36 +118,73 @@ struct PromptToolsSettingsView: View {
 
                 if let codexLoginMessage {
                     Text(codexLoginMessage)
-                        .font(.caption)
+                        .font(.pingFang(.caption))
                         .foregroundStyle(codexLoginMessage.contains("失败") ? .red : .secondary)
                 }
             }
         }
     }
 
-    @ViewBuilder
-    private var codexMetadataView: some View {
-        if codexAuthStatus.accountID != nil || codexAuthStatus.planType != nil || codexAuthStatus.expiresAt != nil {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                if let accountID = codexAuthStatus.accountID {
-                    Text("\(Strings.PromptToolsSettings.codexAccountPrefix): \(redactedAccountID(accountID))")
-                }
-                if let planType = codexAuthStatus.planType {
-                    Text("\(Strings.PromptToolsSettings.codexPlanPrefix): \(planType)")
-                }
-                if let expiresAt = codexAuthStatus.expiresAt {
-                    Text("\(Strings.PromptToolsSettings.codexExpiryPrefix): \(formattedDate(expiresAt))")
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-    }
-
     var body: some View {
-        Form {
+        SettingsFormContainer {
+                // Tool 列表
+                SettingsSection(title: "工具列表") {
+                    if tools.filter({ !$0.isSmart }).isEmpty {
+                        Text(Strings.PromptToolsSettings.emptyToolsMessage)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(tools.filter { !$0.isSmart }) { tool in
+                            ToolRowView(tool: tool, onEdit: {
+                                // 如果是云端工具，提示复制后编辑
+                                if tool.isCloudManaged {
+                                    // 创建本地副本
+                                    let localCopy = PromptTool(
+                                        name: tool.name + Strings.PromptToolsSettings.toolCopySuffix,
+                                        prompt: tool.prompt,
+                                        capabilities: tool.capabilities,
+                                        shortcutKeyCode: 0,  // 清空快捷键避免冲突
+                                        shortcutModifiers: 0,
+                                        source: .custom  // 标记为本地工具
+                                    )
+                                    editorMode = .edit(localCopy)
+                                } else {
+                                    editorMode = .edit(tool)
+                                }
+                            }, onDelete: {
+                                Task {
+                                    try? await dependencies.promptToolCoordinator.deleteTool(id: ToolID(tool.id))
+                                    loadTools()
+                                }
+                            })
+                        }
+                    }
+
+                    HStack {
+                        Button {
+                            editorMode = .new
+                        } label: {
+                            Label("新建工具", systemImage: "plus")
+                        }
+                        .compatibleButtonStyle(prominent: true)
+                        .help("创建一个文字处理工具")
+
+                        Spacer()
+
+                        Button("恢复默认") {
+                            Task {
+                                try? await dependencies.promptToolCoordinator.restoreDefaultTools()
+                                loadTools()
+                            }
+                        }
+                        .compatibleButtonStyle()
+                        .help("恢复系统预设的 Prompt Tools")
+                        .foregroundStyle(.secondary)
+                    }
+                }
+
                 // AI 服务配置
-                Section(Strings.PromptToolsSettings.aiServiceSection) {
+                SettingsSection(title: "服务配置") {
+                    DisclosureGroup("账号与模型", isExpanded: $connectionExpanded) {
                     Picker(Strings.PromptToolsSettings.aiServicePicker, selection: $selectedService) {
                         ForEach(AIServiceType.allCases, id: \.rawValue) { service in
                             Text(service.displayName).tag(service)
@@ -154,6 +192,7 @@ struct PromptToolsSettingsView: View {
                     }
                     .help(Strings.PromptToolsSettings.aiServiceHelp)
                     .onChange(of: selectedService) { _, newValue in
+                        guard connectionLoaded else { return }
                         // 从缓存中加载对应服务的 API Key（不触发 Keychain 读取）
                         loadServiceConfigFromCache()
                         apiSettingsService.updateCurrentServiceType(newValue)
@@ -195,7 +234,7 @@ struct PromptToolsSettingsView: View {
 
                         if hasUnsavedChanges {
                             Text(Strings.PromptToolsSettings.unsavedChanges)
-                                .font(.caption)
+                                .font(.pingFang(.caption))
                                 .foregroundStyle(.orange)
                         }
 
@@ -215,79 +254,29 @@ struct PromptToolsSettingsView: View {
 
                         if let result = connectionTestResult {
                             Text(result)
-                                .font(.caption)
+                                .font(.pingFang(.caption))
                                 .foregroundStyle(result.contains("成功") ? .green : .red)
                         }
                     }
                 }
 
-                // Tool 列表
-                Section(Strings.PromptToolsSettings.toolsSection) {
-                    if tools.filter({ !$0.isSmart }).isEmpty {
-                        Text(Strings.PromptToolsSettings.emptyToolsMessage)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(tools.filter { !$0.isSmart }) { tool in
-                            ToolRowView(tool: tool, onEdit: {
-                                // 如果是云端工具，提示复制后编辑
-                                if tool.isCloudManaged {
-                                    // 创建本地副本
-                                    let localCopy = PromptTool(
-                                        name: tool.name + Strings.PromptToolsSettings.toolCopySuffix,
-                                        prompt: tool.prompt,
-                                        capabilities: tool.capabilities,
-                                        shortcutKeyCode: 0,  // 清空快捷键避免冲突
-                                        shortcutModifiers: 0,
-                                        source: .custom  // 标记为本地工具
-                                    )
-                                    editorMode = .edit(localCopy)
-                                } else {
-                                    editorMode = .edit(tool)
-                                }
-                            }, onDelete: {
-                                Task {
-                                    try? await dependencies.promptToolCoordinator.deleteTool(id: ToolID(tool.id))
-                                    loadTools()
-                                }
-                            })
-                        }
-                    }
-
-                    HStack {
-                        Button {
-                            editorMode = .new
-                        } label: {
-                            Label("添加 Tool", systemImage: "plus")
-                        }
-                        .compatibleButtonStyle(prominent: true)
-                        .help("创建新的 Prompt Tool")
-
-                        Spacer()
-
-                        Button("恢复默认") {
-                            Task {
-                                try? await dependencies.promptToolCoordinator.restoreDefaultTools()
-                                loadTools()
-                            }
-                        }
-                        .compatibleButtonStyle()
-                        .help("恢复系统预设的 Prompt Tools")
-                        .foregroundStyle(.secondary)
-                    }
                 }
 
+
             }
-            .formStyle(.grouped)
-            .compatibleControlSize()
+
         .onAppear {
             loadCurrentServiceSelection()
             loadTools()
 
-            // 加载 API Keys（首次触发 Keychain 授权，后续使用缓存）
-            // 这是合理的：用户打开 Settings 就是为了查看/配置密钥
-            loadAllSettings()
-            refreshCodexAuthStatus()
         }
+        .onChange(of: connectionExpanded) { _, expanded in
+            guard expanded, !connectionLoaded else { return }
+            connectionLoaded = true
+            loadAllSettings()
+            if selectedService == .codex { refreshCodexAuthStatus() }
+        }
+
         .sheet(item: $editorMode) { mode in
             PromptToolEditorView(
                 tool: mode.tool,
@@ -324,7 +313,7 @@ struct PromptToolsSettingsView: View {
                 }
             )
         }
-        .alert("Tool 保存失败", isPresented: $showToolSaveError) {
+        .alert("工具保存失败", isPresented: $showToolSaveError) {
             Button("确定", role: .cancel) { }
         } message: {
             Text(toolSaveErrorMessage)
@@ -426,18 +415,6 @@ struct PromptToolsSettingsView: View {
         refreshCodexAuthStatus()
     }
 
-    private func redactedAccountID(_ accountID: String) -> String {
-        guard accountID.count > 8 else { return "••••" }
-        return "\(accountID.prefix(4))…\(accountID.suffix(4))"
-    }
-
-    private func formattedDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
-    }
-
     private func testConnection() {
         isTestingConnection = true
         connectionTestResult = nil
@@ -473,10 +450,10 @@ struct ToolRowView: View {
                 // 来源图标
                 if tool.source == .langfuse {
                     Text("☁️")
-                        .font(.caption)
+                        .font(.pingFang(.caption))
                 } else if tool.source == .custom {
                     Text("📝")
-                        .font(.caption)
+                        .font(.pingFang(.caption))
                 }
 
                 Text(tool.name)
@@ -485,7 +462,7 @@ struct ToolRowView: View {
                 // SMART 徽章（Smart AI 工具）
                 if tool.isSmart {
                     Text("SMART")
-                        .font(.caption2)
+                        .font(.pingFang(.caption2))
                         .padding(.horizontal, Constants.spacing4)
                         .padding(.vertical, Constants.spacing4)
                         .background(Color.blue)
@@ -496,7 +473,7 @@ struct ToolRowView: View {
 
                 if tool.isDefault {
                     Text("默认")
-                        .font(.caption2)
+                        .font(.pingFang(.caption2))
                         .padding(.horizontal, Constants.spacing4)
                         .padding(.vertical, Constants.spacing4)
                         .background(Color.blue.opacity(Constants.opacity20))
@@ -505,7 +482,7 @@ struct ToolRowView: View {
 
                 if tool.isCloudManaged {
                     Text("只读")
-                        .font(.caption2)
+                        .font(.pingFang(.caption2))
                         .padding(.horizontal, Constants.spacing4)
                         .padding(.vertical, Constants.spacing4)
                         .background(Color.orange.opacity(Constants.opacity20))
@@ -538,7 +515,7 @@ struct ToolRowView: View {
 
             // Prompt 预览
             Text(tool.prompt)
-                .font(.caption)
+                .font(.pingFang(.caption))
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -547,7 +524,7 @@ struct ToolRowView: View {
                 HStack(spacing: 6) {
                     ForEach(tool.capabilities, id: \.rawValue) { capability in
                         Text(capability.displayName)
-                            .font(.caption2)
+                            .font(.pingFang(.caption2))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3)
                             .background(Color.secondary.opacity(0.15))
@@ -558,13 +535,12 @@ struct ToolRowView: View {
 
             // 快捷键
             Text(tool.shortcutDisplayString)
-                .font(.caption)
+                .font(.pingFang(.caption))
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, Constants.spacing8)
         .padding(.horizontal, Constants.spacing12)
-        .background(Color(NSColor.controlBackgroundColor))
-        .cornerRadius(8)
+        .background(.primary.opacity(0.025), in: .rect(cornerRadius: 12))
     }
 }
 

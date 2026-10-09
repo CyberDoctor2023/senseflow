@@ -8,7 +8,11 @@
 import Cocoa
 import SwiftUI
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+@MainActor class AppDelegate: NSObject, NSApplicationDelegate {
+
+    private let sessionDiagnostics = SessionDiagnostics()
+    private var terminationPending = false
+    private let trackpadReveal = TrackpadRevealMonitor.shared
 
     // MARK: - Properties
 
@@ -24,7 +28,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Application Lifecycle
 
+    /// Restores the current workspace when macOS reopens an app whose panel is hidden.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { FloatingWindowManager.shared.showWindow() }
+        return true
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        sessionDiagnostics.beginSession()
         // 不再设置 .accessory 策略，使用默认的 .regular
         // MenuBarExtra 会自动管理菜单栏图标
 
@@ -36,14 +47,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Initialize Langfuse tracing (must be first)
         _ = TracingService.shared
-
-        // 迁移旧的 UserDefaults 标志
-        migrateOnboardingUserDefaults()
-
-        // 首次启动：显示向导请求权限
-        if !UserDefaults.standard.bool(forKey: "skipOnboardingPermissions") {
-            showOnboardingWindow()
-        }
 
         // Removed: setupStatusBarItem() - now handled by MenuBarExtra
 
@@ -64,13 +67,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // checkToolUpdatesOnLaunch()
 
         // 启动剪贴板监听
-        ClipboardMonitor.shared.startMonitoring()
+        if FloatingWindowManager.shared.onboarding.isComplete {
+            ClipboardMonitor.shared.startMonitoring()
+            SystemCaptureService.shared.start()
+        }
 
         // v0.5: 启动文本选择监听（划词即复制）
-        TextSelectionMonitor.shared.startMonitoring()
+        if FloatingWindowManager.shared.onboarding.isComplete { TextSelectionMonitor.shared.startMonitoring() }
 
         // 注册全局快捷键
         setupHotKey()
+        trackpadReveal.start { gesture in
+            switch gesture {
+            case .reveal: FloatingWindowManager.shared.revealFromTrackpad()
+            case .dismiss: FloatingWindowManager.shared.dismissFromTrackpad()
+            }
+        }
+        if !FloatingWindowManager.shared.onboarding.isComplete {
+            DispatchQueue.main.async { FloatingWindowManager.shared.showWindow() }
+        }
 
         // 监听设置窗口打开通知（供浮动窗口齿轮按钮使用）
         NotificationCenter.default.addObserver(
@@ -82,11 +97,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         print("✅ \(AppConstants.productName) \(appVersion) 启动成功")
         print("\n💡 提示: 现在可以复制任意文本或图片，系统会自动保存到数据库")
-        print("💡 按 Cmd+Option+V 打开历史窗口")
+        print("💡 使用 \(HotKeyPreferences.load().displayString) 打开历史窗口")
         print("💡 新功能: Smart 推荐 + Gemini Vision 支持\n")
     }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !terminationPending else { return .terminateLater }
+        terminationPending = true
+        Task { @MainActor in
+            let allowed = await FloatingWindowManager.shared.documentPreview.prepareToClose()
+            terminationPending = false
+            sender.reply(toApplicationShouldTerminate: allowed)
+        }
+        return .terminateLater
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
+        SystemCaptureService.shared.stop()
+        trackpadReveal.stop()
+        sessionDiagnostics.finishSession()
         // 停止剪贴板监听
         ClipboardMonitor.shared.stopMonitoring()
 
@@ -138,7 +167,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func openHistory() {
         print("📋 快捷键触发：打开历史窗口")
-        FloatingWindowManager.shared.toggleWindow()
+        FloatingWindowManager.shared.launchShortcutPressed()
     }
 
     /// 处理打开设置窗口通知（供浮动窗口齿轮按钮使用）
@@ -199,22 +228,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Accessibility Permission
 
-    /// 迁移旧的 onboardingCompleted 标志到新的 skipOnboardingPermissions
-    private func migrateOnboardingUserDefaults() {
-        let defaults = UserDefaults.standard
-        let oldKey = "onboardingCompleted"
-        let newKey = "skipOnboardingPermissions"
-
-        guard defaults.object(forKey: oldKey) != nil else { return }
-
-        if defaults.bool(forKey: oldKey) {
-            defaults.set(true, forKey: newKey)
-            print("✅ UserDefaults 迁移: onboardingCompleted → skipOnboardingPermissions")
-        }
-
-        defaults.removeObject(forKey: oldKey)
-    }
-
     private func checkAccessibilityPermission() {
         // 延迟 1 秒检查，避免启动时弹窗
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -225,53 +238,4 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // MARK: - Onboarding
-
-    /// 显示 SwiftUI Onboarding 窗口
-    func showOnboardingWindow() {
-        print("🔧 [Debug] showOnboardingWindow() called")
-        OnboardingWindowManager.shared.showWindow()
-    }
-
-    // MARK: - Database Test
-
-    private func testDatabase() {
-        print("\n🧪 开始测试数据库...")
-
-        // 测试插入文本
-        let success1 = DatabaseManager.shared.insertItem(
-            type: .text,
-            textContent: "测试文本 1",
-            appName: "Xcode",
-            appPath: "/Applications/Xcode.app"
-        )
-        print(success1 ? "✅ 插入文本成功" : "❌ 插入文本失败")
-
-        // 测试插入重复文本（应该被去重）
-        let success2 = DatabaseManager.shared.insertItem(
-            type: .text,
-            textContent: "测试文本 1",
-            appName: "Xcode",
-            appPath: "/Applications/Xcode.app"
-        )
-        print(success2 ? "❌ 去重失败" : "✅ 去重成功")
-
-        // 测试插入另一条文本
-        let success3 = DatabaseManager.shared.insertItem(
-            type: .text,
-            textContent: "测试文本 2",
-            appName: "Safari",
-            appPath: "/Applications/Safari.app"
-        )
-        print(success3 ? "✅ 插入文本成功" : "❌ 插入文本失败")
-
-        // 查询所有记录
-        let items = DatabaseManager.shared.fetchRecentItems()
-        print("\n📊 当前记录数: \(items.count)")
-        for item in items {
-            print("  - [\(item.type.rawValue)] \(item.previewText) | \(item.appName) | \(item.relativeTimeString)")
-        }
-
-        print("\n✅ 数据库测试完成\n")
-    }
 }

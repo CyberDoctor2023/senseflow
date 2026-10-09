@@ -418,3 +418,14 @@ extension AppHotKeyCoordinator: PromptToolHotKeyHandling {
         hotKeyManager.unregisterAllToolHotKeys()
     }
 }
+
+enum HotKeyError: LocalizedError {
+    case registrationFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .registrationFailed:
+            return "快捷键注册失败"
+        }
+    }
+}

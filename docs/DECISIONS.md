@@ -312,3 +312,29 @@ func initializeDefaultLangfuseKeys() {
 ---
 
 **维护**: 每次重大技术决策都应追加到本文件，保持 3-5 条/次的简洁记录
+
+## 2026-10-06：性能优先重构与指导文档简化
+
+- 保留 SwiftUI/AppKit/SQLite，优先主线程重工作、稳定记录身份、精确清理与任务/刷新所有权；详见 `REFACTOR_PLAN_2026-10-06.md`，实现尚未开始。
+- 类型色条与可见 AX 调试内容退出目标产品；长文原文按需自适应预览；固定工具显式接收输入并预览结果。embedding/RAG 后置独立评估。
+- 新指导文档覆盖旧“Context7 固定五轮/三次、必须 slash commands、只改参数禁止”等流程决策；研究次数以找到官方事实为准。产品实现的验证授权仍遵循用户/项目当前约束，本轮未运行构建。
+- 全局项目专属验收规则移到按需 references，保留完整备份；cc-switch active Codex prompt 与全局运行时同步。模型更新不构成免除安全/验证义务的理由。
+
+## 2026-10-06：长文本为产品主线
+
+- 用户明确要求 hover 弹出 Word 风格窗口并编辑。PRD：`prd/LONG_TEXT_DOCUMENT_PREVIEW.md`，工程设计：`design/LONG_TEXT_DOCUMENT_PREVIEW.md`；覆盖早先 Space/选中只读详情方案。
+- 默认 native 纯文本、hover 不抢焦点、进入编辑固定文档；原始记录 immutable，草稿 checkpoint + 显式新版本保存，不擅自改原文/剪贴板。
+- 解耦 session、native editor、window workspace、history/draft store；唯一 live buffer，持久化 generation 回执防止覆盖后续输入。
+- 先修已证实 OCR 闪退，再实施长文必要基础与阅读/编辑/恢复；工具、依赖清理和 RAG 后置。设计完成不等于产品验证通过。
+
+## 2026-10-06：长文本第一阶段实际架构
+
+采用 DatabaseManager 的单一串行队列拥有既有连接；DocumentRepository 只提供异步合同，不另建连接/actor保存影子历史。实时正文只由原生TextKit 2持有，coordinator只发布元数据，保存和checkpoint才取快照。保存回执按会话/代次确认，不替换正在输入的正文。旧AX覆盖层实现与工程引用已删除。实现及验证边界见 `DOCUMENT_IMPLEMENTATION_VALIDATION_2026-10-06.md`。
+
+## 2026-10-06：用户体验修订
+
+无边框中央玻璃浮层替代标题栏窗口，文字/图片共享展开动画，原生玻璃卡片与透明编辑器，移除文档工具栏，新增普通滚轮横向历史。最小构建与focused正文/图片安全验证通过；实测范围和限制见 `GLASS_PREVIEW_VALIDATION_2026-10-06.md`。此前查找/字体规格与最终重跑待办以本次用户修订和证据为准。
+
+## 2026-10-06：原卡片向上展开与内容高度
+
+最终实现替换中央浮层：既有历史窗口向上增加空间，原卡片变宽变高，LazyHStack底边对齐并推动后续卡片。文本有限测量、短文较矮、长文屏幕上限内滚动，图片按比例展开；同一窗口仅挂载一个正文编辑器。编辑期间保留窗口归属并阻止 A/B 切换，避免缓冲区重新挂载。构建及完整 focused 验证已通过，真实动画帧率/多屏仍待体验验收。详见 `INLINE_PREVIEW_VALIDATION_2026-10-06.md`。

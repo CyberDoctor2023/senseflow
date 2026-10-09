@@ -17,14 +17,6 @@ enum BusinessRules {
         static let percentageMultiplier = 100
     }
 
-    /// 剪贴板历史
-    enum ClipboardHistory {
-        static let defaultLimit = 200
-        static let minLimit = 50
-        static let maxLimit = 500
-        static let limitStep = 50
-    }
-
     /// 文件存储
     enum FileStorage {
         static let largeFileThreshold = 512 * 1024  // 512KB
