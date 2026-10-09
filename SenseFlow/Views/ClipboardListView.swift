@@ -266,8 +266,12 @@ struct HorizontalWheelRegion: NSViewRepresentable {
             stopMomentum()
             configure(scroll)
             onScroll?()
-            if vertical {
-                let pixels = event.scrollingDeltaY * (event.hasPreciseScrollingDeltas ? 1 : 24)
+            // A horizontal mouse wheel without system gesture/momentum phases
+            // needs the same release continuation as a vertical mouse wheel.
+            // Physical trackpad gestures keep their native momentum stream.
+            if vertical || (!touchingTrackpad && !phasedGesture) {
+                let axisDelta = vertical ? event.scrollingDeltaY : event.scrollingDeltaX
+                let pixels = axisDelta * (event.hasPreciseScrollingDeltas ? 1 : 24)
                 let discrete = !touchingTrackpad && event.momentumPhase.isEmpty
                 if discrete {
                     guard pixels != 0 else { return true }

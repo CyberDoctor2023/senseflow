@@ -448,10 +448,14 @@ import CryptoKit
         guard let preciseEvent = NSEvent(cgEvent: preciseCG) else { throw Failure("precise history wheel event missing") }
         let preciseBefore = wheelScroll.contentView.bounds.origin.x
         nativeWindow.sendEvent(preciseEvent)
-        try await Task.sleep(nanoseconds: 150_000_000)
+        try await Task.sleep(nanoseconds: 80_000_000)
         let preciseDistance = wheelScroll.contentView.bounds.origin.x - preciseBefore
         print("MEASURE precise native wheel movement: \(preciseDistance)pt")
         try require(abs(preciseDistance - 17) < 1, "precise horizontal wheel moves history by pixel distance without line multiplication")
+        let horizontalReleaseStart = wheelScroll.contentView.bounds.origin.x
+        try await Task.sleep(nanoseconds: 180_000_000)
+        try require(wheelScroll.contentView.bounds.origin.x > horizontalReleaseStart + 1,
+                    "unphased horizontal mouse wheel continues moving after release")
         guard let pixelWheel = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1,
                                       wheel1: -48, wheel2: 0, wheel3: 0) else { throw Failure("pixel vertical wheel setup missing") }
         pixelWheel.location = wheelCG.location

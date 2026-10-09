@@ -39,7 +39,12 @@ import AppKit
         let documents = session.historyModel.actions.documents
         let frame = session.historyFrame
         documents.preview(article, anchor: NSRect(x: frame.midX - 120, y: frame.minY + 40, width: 240, height: 240), pinOnOpen: false)
-        try await Task.sleep(for: .milliseconds(1100))
+        // Observe the lifecycle event rather than assuming first native layout
+        // completes within a fixed sleep on a busy machine.
+        for _ in 0..<100 {
+            if documents.source?.itemID == article.id && tour.hasPreview { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
         try require(documents.source?.itemID == article.id && tour.hasPreview && tour.step == .filters,
                     "native preview feeds actual tutorial progress")
         guard let number = documents.previewWindowNumber,
@@ -57,6 +62,10 @@ import AppKit
         let closed = await documents.prepareToClose()
         try await Task.sleep(for: .milliseconds(800))
         try require(closed && !tour.hasPreview, "native preview closure releases the category instruction")
+        try require(session.isHistoryVisible && session.historyFrame == frame,
+                    "closing tutorial preview keeps history visible at its original position")
+        try require(NSApp.keyWindow?.isVisible == true && NSApp.keyWindow?.windowNumber != number,
+                    "closing tutorial preview restores focus to the tutorial workspace")
         await session.historyModel.selectType(.text)
         tour.categorySelected()
         try await Task.sleep(for: .milliseconds(1700))

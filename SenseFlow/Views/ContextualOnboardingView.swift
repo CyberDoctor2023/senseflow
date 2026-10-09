@@ -69,7 +69,7 @@ private struct ContextualOnboardingOverlay: View {
         switch step {
         case .launch: return []
         case .history: return [.history]
-        case .filters: return anchors[.preview] != nil ? [.preview] : [.textFilter, .imageFilter, .codeFilter]
+        case .filters: return anchors[.preview] != nil ? [.preview] : categoryTargets.map(\.0)
         case .preview:
             let viewport = anchors[.history].map { geometry[$0.bounds] } ?? CGRect(origin: .zero, size: geometry.size)
             let cards = anchors.keys.filter {
@@ -113,11 +113,15 @@ private struct ContextualOnboardingOverlay: View {
         switch step {
         case .launch: return "按下 " + HotKeyPreferences.load().displayString + "，打开剪贴板"
         case .history: return "左右滑动"
-        case .filters: return anchors[.preview] != nil ? "轻点别处以关闭预览" : "按图片文字代码筛选"
+        case .filters: return anchors[.preview] != nil ? "轻点别处以关闭预览" : "按" + categoryTargets.map(\.1).joined(separator: "、") + "筛选"
         case .preview: return "长按或按压以预览"
         case .finished: return ""
         case .complete: return ""
         }
+    }
+    private var categoryTargets: [(OnboardingTarget, String)] {
+        [(.textFilter, "文字"), (.imageFilter, "图片"), (.codeFilter, "代码")]
+            .filter { anchors[$0.0] != nil }
     }
     private var arrowPointsLeft: Bool {
         (step == .filters || step == .preview || targets == [.textFilter]) && calloutCenter.x - width / 2 > targetRect.maxX

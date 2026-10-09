@@ -23,4 +23,13 @@ import AppKit
         return contains(root)
     }
     var hasKeyWindow: Bool { contains(NSApp.keyWindow) }
+
+    /// Hands focus back to a visible workspace surface without activating the app.
+    func restoreKeyWindow(excluding closingWindow: NSWindow) {
+        guard NSApp.isActive,
+              let destination = windows.allObjects.first(where: {
+                  $0 !== closingWindow && $0.isVisible && $0.canBecomeKey
+              }) else { return }
+        destination.makeKey()
+    }
 }

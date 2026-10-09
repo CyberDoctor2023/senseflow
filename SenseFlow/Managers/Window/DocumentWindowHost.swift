@@ -169,6 +169,7 @@ enum DocumentCloseChoice { case save, keepDraft, discard, cancel }
         transitionID = UUID()
         let token = transitionID
         panel.allowsInput = false
+        if onboarding != nil { workspace.restoreKeyWindow(excluding: panel) }
         panel.resignKey()
         session?.previewContentVisible = false
         isTransitioning = true
