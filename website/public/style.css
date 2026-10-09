@@ -193,6 +193,7 @@ a {
 .product-stage {
   position: relative;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   min-height: 430px;
   padding: 72px 0 64px;
   place-items: center;
@@ -232,14 +233,15 @@ a {
 
 .clipboard-shell {
   position: relative;
-  width: 100%;
+  width: calc(100% - 12px);
   max-width: 1480px;
 }
 
 .demo-toolbar {
   display: flex;
-  width: calc(100% - 12px);
-  margin: 0 6px 4px;
+  width: 100%;
+  margin: 0 0 4px;
+  min-height: 50px;
   align-items: center;
   gap: 8px;
 }
@@ -262,9 +264,9 @@ a {
   display: flex;
   width: min(280px, 42vw);
   height: 36px;
-  padding: 0 15px;
+  padding: 0 12px;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   border-radius: 18px;
 }
 
@@ -336,6 +338,22 @@ a {
   font-size: 12px;
 }
 
+.filter-button svg,
+.pin-button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pin-button svg {
+  fill: currentColor;
+  stroke-width: 1;
+}
+
 .record-icon {
   font-size: 8px;
 }
@@ -346,7 +364,7 @@ a {
 
 .history-window {
   position: relative;
-  height: calc(var(--card-size) + (var(--content-inset) * 2));
+  height: calc(var(--card-size) + (var(--content-inset) * 2) + 2px);
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: 20px;
@@ -367,7 +385,7 @@ a {
   z-index: 4;
   top: 0;
   bottom: 0;
-  width: 8vw;
+  width: 0;
   max-width: 100px;
   content: "";
   pointer-events: none;
@@ -387,6 +405,7 @@ a {
   display: flex;
   width: max-content;
   height: 100%;
+  margin-left: var(--content-inset);
   will-change: transform;
   animation: history-flow 34s linear infinite;
 }
@@ -394,7 +413,7 @@ a {
 .card-set {
   display: flex;
   height: 100%;
-  padding: var(--content-inset) var(--card-gap) var(--content-inset) var(--content-inset);
+  padding: var(--content-inset) var(--card-gap) var(--content-inset) 0;
   align-items: center;
   gap: var(--card-gap);
 }
@@ -409,7 +428,7 @@ a {
   flex-direction: column;
   justify-content: space-between;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.76);
+  border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: var(--card-radius);
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.56));
@@ -468,7 +487,8 @@ a {
 .card-copy.centered {
   display: grid;
   flex: 1;
-  place-items: center;
+  align-items: center;
+  justify-items: start;
 }
 
 .card-copy p {
@@ -493,23 +513,29 @@ a {
   align-items: center;
   justify-content: space-between;
   color: rgba(0, 0, 0, 0.44);
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .clip-card footer span {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
 }
 
 .app-dot {
   display: inline-block;
-  width: 9px;
-  height: 9px;
-  border: 1px solid rgba(0, 0, 0, 0.18);
+  width: 14px;
+  height: 14px;
+  border: 0;
   border-radius: 3px;
-  background: rgba(0, 0, 0, 0.09);
+  background: url("/app-icon.png") center / contain no-repeat;
+}
+
+img.app-dot {
+  border: 0;
+  background: none;
+  object-fit: contain;
 }
 
 .clip-card pre {
@@ -767,8 +793,8 @@ a {
 
 @media (max-width: 620px) {
   :root {
-    --card-size: 168px;
-    --content-inset: 22px;
+    --card-size: 180px;
+    --content-inset: 28px;
   }
 
   .nav { min-height: 62px; }
@@ -776,7 +802,7 @@ a {
   .hero h1 { font-size: clamp(58px, 18vw, 88px); }
   .intro { font-size: 15px; }
   .product-stage { padding: 64px 0 54px; }
-  .demo-toolbar { width: calc(100% - 28px); }
+  .demo-toolbar { width: 100%; }
   .search { width: min(210px, 54vw); }
   .filter-button:nth-child(n+4) { display: none; }
   .history-window { border-radius: 20px; }
