@@ -215,3 +215,9 @@ OCR诊断：只读隔离数据库确认403已识别、405尚无结果，404已�
 阶段 28 验证与替换：`out/2026-10-08-project-refactor/build-stage28-final.log` 构建成功；`scroll-stage28.log` 原生滚动、边缘回弹及末卡可达回归通过。正常退出旧版后通过 DeployDevelopment.py stage28 替换，旧版保存在 `/Users/jack/Applications/senseflow-development-2026-10-08/SenseFlow-before-stage28.app`。新版 PID 57401，CUA 确认历史窗口及卡片加载。惯性手感仍需真实鼠标体验，不将自动回归视为主观动效验收。
 
 第二十九批平台动效替换：[合同、官方依据、审查与验证](MOTION_PLATFORM_2026-10-08.md)。显示同步 + 系统 Spring 替代固定 Timer/指数积分，系统曲线与阶段/符号动效替代手写窗口贝塞尔、教程抛物线、pin 延迟及菜单栏 Timer。新增真实释放断言揭示 stage28 自造惯性事件位移为 0，删除这条失效链路。stage29 已构建、滚动/反向/原生回弹、预览编辑和教程回归通过，正常备份替换启动；GPU/单帧性能、实际手感未完成验收，不据单次 CPU 数据宣称提速。
+
+## 第三十批：删除闲置同步图片缓存（2026-10-14）
+
+目标：全仓库调用检索确认 ClipboardImageCache 只有声明和 PBX 引用，删除该旧同步图片读取/缓存路径和工程成员。实际媒体唯一所有者继续为 HistoryMediaLoader / ClipboardThumbnailLoader；不改缓存参数、卡片交互或数据库。非目标：声称闲置代码删除提升运行帧率。
+
+完成条件：无生产/测试调用残留、工程引用一致、focused Debug build 通过。验证：检索与 PBX lint、构建；不新增只测试删除动作的单元测试。Git 45dcf59 保存本批前完整源码，可回滚恢复。整体 V 仍需真实交互、GPU/单帧性能与完整验收审计，不由本批替代。
