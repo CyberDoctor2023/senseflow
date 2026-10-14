@@ -111,16 +111,20 @@ struct EmptyBackgroundView: View {
 
                 // 提示圆球：从胶囊右侧分离出来
                 if isExpanded {
+                    HStack(spacing: elementSpacing) {
                     ForEach(hints, id: \.icon) { hint in
                         typeButton(icon: hint.icon, title: hint.text, type: hint.type)
                             .glassEffect(.regular.interactive(), in: .circle)
                             .glassEffectID("hint-\(hint.icon)", in: glassNamespace)
                             .glassEffectTransition(.matchedGeometry)
-                            .modifier(CategorySurfaceFeedback())
+                            .modifier(CategorySurfaceFeedback(hovered: hoveredHint == hint.icon))
                             .frame(width: config.buttonSize, height: config.buttonSize)
                             .animation(reduceMotion ? nil : .smooth(duration: Constants.SelectionFeedback.duration), value: viewModel.selectedType)
                             .animation(reduceMotion ? nil : .smooth(duration: Constants.SelectionFeedback.duration), value: hoveredHint)
                     }
+                    }
+                    .contentShape(Rectangle())
+                    .onContinuousHover { updateCategoryHover($0) }
                 }
 
                 Spacer()
@@ -144,14 +148,18 @@ struct EmptyBackgroundView: View {
                 // .frame(height: config.height)
                 .background(config.material, in: Capsule())
 
+            HStack(spacing: elementSpacing) {
             ForEach(hints, id: \.icon) { hint in
                 typeButton(icon: hint.icon, title: hint.text, type: hint.type)
                     .background(config.material, in: Circle())
-                    .modifier(CategorySurfaceFeedback())
+                    .modifier(CategorySurfaceFeedback(hovered: hoveredHint == hint.icon))
                     .frame(width: config.buttonSize, height: config.buttonSize)
                     .animation(reduceMotion ? nil : .smooth(duration: Constants.SelectionFeedback.duration), value: viewModel.selectedType)
                     .animation(reduceMotion ? nil : .smooth(duration: Constants.SelectionFeedback.duration), value: hoveredHint)
             }
+            }
+            .contentShape(Rectangle())
+            .onContinuousHover { updateCategoryHover($0) }
 
             Spacer()
 
@@ -214,8 +222,21 @@ struct EmptyBackgroundView: View {
         .accessibilityLabel(title)
         .accessibilityValue(viewModel.selectedType == type ? "已选中" : "未选中")
         .help(viewModel.selectedType == type ? "再次点击显示全部" : "只显示\(title)")
-        .onHover { hoveredHint = $0 ? icon : nil }
         .onboardingTarget(onboardingTarget(for: type), radius: config.buttonSize / 2)
+    }
+
+    /// Keeps the gap between adjacent category surfaces inside the hover region.
+    private func updateCategoryHover(_ phase: HoverPhase) {
+        switch phase {
+        case .active(let location):
+            guard !hints.isEmpty else { return }
+            let index = min(hints.count - 1, max(0,
+                Int((location.x + elementSpacing / 2) / (config.buttonSize + elementSpacing))))
+            let icon = hints[index].icon
+            if hoveredHint != icon { hoveredHint = icon }
+        case .ended:
+            hoveredHint = nil
+        }
     }
 
     private func onboardingTarget(for type: ClipboardContentFilter) -> OnboardingTarget {
@@ -250,12 +271,14 @@ struct EmptyBackgroundView: View {
 
 /// Scales the complete category surface, including its glass shell.
 private struct CategorySurfaceFeedback: ViewModifier {
+    let hovered: Bool
     @GestureState private var pressed = false
     @State private var enlarged = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func body(content: Content) -> some View {
         content
-            .scaleEffect(reduceMotion || !enlarged ? 1 : 1.10)
+            .scaleEffect(reduceMotion ? 1 : enlarged ? 1.10 : hovered ? Constants.SelectionFeedback.scale : 1)
+            .animation(reduceMotion ? nil : .smooth(duration: Constants.SelectionFeedback.duration), value: hovered)
             .animation(reduceMotion ? nil : .smooth(duration: enlarged ? 0.12 : 0.2), value: enlarged)
             .simultaneousGesture(DragGesture(minimumDistance: 0).updating($pressed) { _, state, _ in state = true })
             .task(id: pressed) {
