@@ -35,3 +35,5 @@
 输入诊断证据：build-input-rejection.log 构建通过并已备份、签名验证后安装。card-input-runtime.log 记录右键按下，约 451ms 后 visible=true、buttons=0、held=1，因此阈值检查拒绝；这说明 AX 节点点击的合成输入未保持系统按键状态，不能据此认定真实鼠标长按故障，也不能修改生产按键检查迎合自动化。随后坐标长按被 CUA 明确拒绝：Mac 已锁屏，自动解锁失败，需要人工解锁才能继续 UI。日志流已正常停止。一次空闲 ps 采样为 CPU 0.0%、RSS 40432KB，不是动画帧率或前后性能比较。
 
 收尾补充：源卡片也使用拖动代次，覆盖新拖动已松手但仍在收回的竞争窗口；未展开工具不接受原生拖放；截图与起始几何推迟到载荷完成且按键有效之后。build-drag-capture-lifecycle.log BUILD SUCCEEDED，diff 审查通过。最新修改未安装，实际融合、外部输入框、取消回程与性能比较仍待解锁后验收。
+
+职责提取：工具几何协议、整卡共享呈现、投递与收尾以及玻璃覆盖层已移入 Views/CardDragPresentation.swift；卡片内容与原生源输入保留在 ClipboardCardView。逐字比对 HEAD 的提取声明与保留前缀一致（仅移除旧文件不用的 Observation import），新增 target 引用数量唯一，plutil 工程校验通过，build-presentation-extraction.log BUILD SUCCEEDED。再次 CUA 绑定明确报告 Mac 仍锁屏，不能进行视觉、外部拖入或性能验收。本次尚未安装。

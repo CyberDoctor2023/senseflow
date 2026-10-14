@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C71400010000000000000001 /* CardDragPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C71400020000000000000001 /* CardDragPresentation.swift */; };
 		AB1400010000000000000001 = {isa = PBXBuildFile; fileRef = AB1400010000000000000002; };
 		AB1400010000000000000005 = {isa = PBXBuildFile; productRef = AB1400010000000000000004; };
 		E8F100010000000000000001 /* TrackpadRevealMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F100020000000000000001 /* TrackpadRevealMonitor.swift */; };
@@ -178,6 +179,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		C71400020000000000000001 /* CardDragPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardDragPresentation.swift; sourceTree = "<group>"; };
 		AB1400010000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateService.swift; sourceTree = "<group>"; };
 		E8F100020000000000000001 /* TrackpadRevealMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackpadRevealMonitor.swift; path = SenseFlow/Managers/TrackpadRevealMonitor.swift; sourceTree = "<group>"; };
 		B71007010000000000000002 /* onboarding-promotion.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "onboarding-promotion.png"; sourceTree = "<group>"; };
@@ -691,6 +693,7 @@
 			children = (
 				04BC7F4F2F18B300006978CE /* ClipboardListView.swift */,
 				04BC7F502F18B300006978CE /* ClipboardCardView.swift */,
+				C71400020000000000000001 /* CardDragPresentation.swift */,
 				04BC7F512F18B300006978CE /* VisualEffectView.swift */,
 				F3000000000000000000001 /* HotKeyRecorderView.swift */,
 				F4000000000000000000001 /* SettingsView.swift */,
@@ -1075,6 +1078,7 @@
 				04BC7F4E2F18B100006978CE /* HotKeyManager.swift in Sources */,
 				04BC7F532F18B300006978CE /* ClipboardListView.swift in Sources */,
 				04BC7F542F18B300006978CE /* ClipboardCardView.swift in Sources */,
+				C71400010000000000000001 /* CardDragPresentation.swift in Sources */,
 				04BC7F552F18B300006978CE /* VisualEffectView.swift in Sources */,
 				04BC7F562F18B400006978CE /* FloatingWindowManager.swift in Sources */,
 				B1000000000000000000001 /* HotKeyPreferences.swift in Sources */,
