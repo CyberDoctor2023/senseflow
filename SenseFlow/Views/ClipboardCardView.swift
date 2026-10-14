@@ -380,11 +380,8 @@ struct CardPointerRegion: NSViewRepresentable {
             guard view.window === owner, let tool = view as? any CardToolDropSurface,
                   let rect = tool.toolScreenFrame else { return nil }
             // The card's top edge, rather than its grip point, approaches one circular target.
-            let vertical = abs(frame.maxY - rect.minY)
-            let horizontal = abs(frame.midX - rect.midX)
-            guard vertical <= 30, rect.midX >= frame.minX + 20, rect.midX <= frame.maxX - 20,
-                  horizontal <= rect.width / 2 + 36 else { return nil }
-            return (tool, rect, horizontal + vertical * 0.25)
+            guard let score = CardToolGeometry.connectionScore(card: frame, tool: rect) else { return nil }
+            return (tool, rect, score)
         }
         guard let best = candidates.min(by: { $0.2 < $1.2 }) else { clearTarget(); return }
         if selectedTool !== best.0 {
@@ -392,16 +389,16 @@ struct CardPointerRegion: NSViewRepresentable {
             selectedTool = best.0
             best.0.setCardTargeted(true)
         }
-        targetFrame = best.1
-        targetSymbol = best.0.toolSymbol
-        targetNumber = best.0.toolNumber
+        if targetFrame != best.1 { targetFrame = best.1 }
+        if targetSymbol != best.0.toolSymbol { targetSymbol = best.0.toolSymbol }
+        if targetNumber != best.0.toolNumber { targetNumber = best.0.toolNumber }
     }
 
     /// Both native destination and source-release callbacks deliver at most once.
     func deliver(_ text: String, to tool: any CardToolDropSurface) -> Bool {
         guard !delivered, selectedTool === tool else { return false }
-        guard tool.acceptCardText(text) else { return false }
         delivered = true
+        guard tool.acceptCardText(text) else { delivered = false; return false }
         return true
     }
 
@@ -503,5 +500,17 @@ private struct DragToolCardShape: Shape {
                                        height: connectionHeight + 12))
         }
         return path
+    }
+}
+
+/// Scores a local top-edge connection independently of the mouse grip or window focus.
+enum CardToolGeometry {
+    static func connectionScore(card: CGRect, tool: CGRect) -> CGFloat? {
+        guard !card.isEmpty, !tool.isEmpty else { return nil }
+        let vertical = abs(card.maxY - tool.minY)
+        let horizontal = abs(card.midX - tool.midX)
+        guard vertical <= 30, tool.midX >= card.minX + 20, tool.midX <= card.maxX - 20,
+              horizontal <= tool.width / 2 + 36 else { return nil }
+        return horizontal + vertical * 0.25
     }
 }
