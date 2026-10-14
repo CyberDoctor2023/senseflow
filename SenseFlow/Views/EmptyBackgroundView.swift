@@ -209,13 +209,14 @@ struct EmptyBackgroundView: View {
 
     private var showsTools: Bool { toolsEngaged || viewModel.actions.pressedItemID != nil }
 
-    private var contextualToolTargets: some View {
-        toolTargets
-            .offset(y: toolsEngaged ? 0 : (showsTools ? toolRestingOffset - 6 : toolRestingOffset + config.buttonSize / 2 + 6))
-            .allowsHitTesting(toolsEngaged)
-            .accessibilityHidden(!toolsEngaged)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.28), value: toolsEngaged)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: showsTools)
+    @ViewBuilder private var contextualToolTargets: some View {
+        if showsTools {
+            toolTargets
+                .offset(y: toolsEngaged ? 0 : toolRestingOffset - 6)
+                .allowsHitTesting(toolsEngaged)
+                .accessibilityHidden(!toolsEngaged)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.28), value: toolsEngaged)
+        }
     }
 
     private var toolTargets: some View {
@@ -235,7 +236,9 @@ struct EmptyBackgroundView: View {
                     .frame(width: config.buttonSize, height: config.buttonSize)
                 }
                 .buttonStyle(.plain)
-                .modifier(ToolGlassSurface(size: config.buttonSize, id: tool.id, namespace: glassNamespace))
+                .modifier(ToolGlassSurface(id: tool.id, namespace: glassNamespace,
+                                           active: showsTools, selected: targetedTool == tool.id,
+                                           restingOffset: toolRestingOffset))
                 .scaleEffect(targetedTool == tool.id ? 1.16 : (hoveredTool == tool.id ? Constants.SelectionFeedback.scale : 1))
                 .overlay {
                     Circle().stroke(.primary.opacity(targetedTool == tool.id ? 0.28 : 0), lineWidth: 1.5)
@@ -470,6 +473,9 @@ private struct NativeToolDropTarget: NSViewRepresentable {
         override func mouseUp(with event: NSEvent) { if enabled { onActivate?() } }
         override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
             guard enabled, sender.draggingPasteboard.string(forType: .string) != nil else { return [] }
+            if let window {
+                CardDragPresentation.shared.targetFrame = window.convertToScreen(convert(bounds, to: nil))
+            }
             onTargetChanged?(true)
             return sender.draggingSource is CardPointerRegion.PointerView ? .generic : .copy
         }
@@ -477,6 +483,7 @@ private struct NativeToolDropTarget: NSViewRepresentable {
             enabled ? (sender.draggingSource is CardPointerRegion.PointerView ? .generic : .copy) : []
         }
         override func draggingExited(_ sender: (any NSDraggingInfo)?) {
+            CardDragPresentation.shared.targetFrame = nil
             onTargetChanged?(false)
         }
         override func prepareForDragOperation(_ sender: any NSDraggingInfo) -> Bool { enabled }
@@ -488,24 +495,36 @@ private struct NativeToolDropTarget: NSViewRepresentable {
             return true
         }
         override func draggingEnded(_ sender: any NSDraggingInfo) {
+            CardDragPresentation.shared.targetFrame = nil
             onTargetChanged?(false)
         }
     }
 }
 
-/// Each tool keeps its own glass identity; proximity merging is owned by the shared container.
+/// Only the current destination shares the dragged card's glass extraction group.
 private struct ToolGlassSurface: ViewModifier {
-    let size: CGFloat
     let id: UUID
     let namespace: Namespace.ID
+    let active: Bool
+    let selected: Bool
+    let restingOffset: CGFloat
+
     @ViewBuilder func body(content: Content) -> some View {
         if #available(macOS 26.0, *) {
-            content
-                .glassEffect(.regular, in: .circle)
-                .glassEffectID(id, in: namespace)
-                .glassEffectTransition(.matchedGeometry)
+            if active {
+                if selected || CardDragPresentation.shared.surface == nil { surface(content) }
+                else { GlassEffectContainer(spacing: 0) { surface(content) } }
+            }
         } else {
-            content.background(.thinMaterial, in: Circle())
+            content.background(.regularMaterial, in: Circle()).opacity(active ? 1 : 0)
         }
+    }
+
+    @available(macOS 26.0, *)
+    private func surface(_ content: Content) -> some View {
+        content.foregroundStyle(selected ? Color.primary : Color.secondary)
+            .glassEffect(.regular.interactive(), in: .circle)
+            .glassEffectID(id, in: namespace)
+            .glassEffectTransition(.matchedGeometry)
     }
 }

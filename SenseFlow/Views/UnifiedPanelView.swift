@@ -88,9 +88,10 @@ struct UnifiedPanelView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            ZStack(alignment: .bottom) {
+            Group {
                 HistoryBackdrop(height: mainContainerConfig.windowHeight(cardConfig: cardConfig),
                                 cornerRadius: mainContainerConfig.cornerRadius)
+                    .compatibleGlassGroup(spacing: 0)
                     .onboardingTarget(.history, radius: mainContainerConfig.cornerRadius)
                 // Search and background keep their original baseline while a card grows above them.
                 VStack(spacing: 0) {
@@ -105,7 +106,6 @@ struct UnifiedPanelView: View {
                 .frame(height: topConfig.windowHeight + topConfig.gapFromMainWindow + mainContainerConfig.windowHeight(cardConfig: cardConfig))
 
             }
-            .compatibleGlassGroup(spacing: 12)
 
             GeometryReader { geometry in
                 ZStack {
@@ -140,7 +140,7 @@ struct UnifiedPanelView: View {
         .padding(.bottom, Constants.ClipboardWindow.shadowBleedBottom)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .overlay(alignment: .topLeading) { CardDragOverlay() }
-        .compatibleGlassGroup(spacing: 12)
+        .compatibleGlassGroup(spacing: 26)
         .containerBackground(.clear, for: .window)  // 窗口级背景透明
         .font(.pingFang(size: 13))
         .contextualOnboarding(onboarding, hasRecords: !viewModel.items.isEmpty)

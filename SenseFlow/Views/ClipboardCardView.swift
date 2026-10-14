@@ -91,7 +91,6 @@ struct ClipboardCardView: View {
     private var dragSurface: some View {
         cardContent.padding(14)
             .frame(width: Constants.Card.width, height: Constants.Card.height)
-            .compatibleGlassEffect(cornerRadius: Constants.Card.cornerRadius, interactive: false)
             .environment(\.appearsActive, true)
     }
 
@@ -306,12 +305,14 @@ struct CardPointerRegion: NSViewRepresentable {
     private(set) var ownerFrame = CGRect.zero
     private(set) var inside = false
     private(set) var opacity: Double = 1
+    var targetFrame: CGRect?
     @ObservationIgnored private weak var owner: NSWindow?
     @ObservationIgnored private var origin = CGRect.zero
     @ObservationIgnored private var offset = CGPoint.zero
     @ObservationIgnored private var nativeComponents: [NSDraggingImageComponent] = []
 
     func begin(surface: AnyView, frame: CGRect, window: NSWindow?, nativeItem: NSDraggingItem) {
+        targetFrame = nil
         self.surface = surface
         self.frame = frame
         origin = frame
@@ -319,7 +320,7 @@ struct CardPointerRegion: NSViewRepresentable {
         ownerFrame = window?.frame ?? .zero
         let pointer = NSEvent.mouseLocation
         offset = CGPoint(x: pointer.x - frame.minX, y: pointer.y - frame.minY)
-        inside = ownerFrame.contains(pointer)
+        inside = canPresentWholeCard
         opacity = 1
         nativeComponents = nativeItem.imageComponents ?? []
         if inside { nativeItem.imageComponentsProvider = { [] } }
@@ -327,7 +328,7 @@ struct CardPointerRegion: NSViewRepresentable {
     func move(to point: CGPoint, session: NSDraggingSession) {
         ownerFrame = owner?.frame ?? ownerFrame
         frame.origin = CGPoint(x: point.x - offset.x, y: point.y - offset.y)
-        let nextInside = ownerFrame.contains(point)
+        let nextInside = canPresentWholeCard
         guard nextInside != inside else { return }
         inside = nextInside
         let components = nativeComponents
@@ -335,7 +336,13 @@ struct CardPointerRegion: NSViewRepresentable {
             item.imageComponentsProvider = nextInside ? { [] } : { components }
         }
     }
+    /// Window-local glass must never replace a native image that extends beyond the window.
+    private var canPresentWholeCard: Bool {
+        ownerFrame.contains(frame.insetBy(dx: -12, dy: -12))
+    }
+
     func finish(cancelled: Bool, completion: @escaping () -> Void) {
+        targetFrame = nil
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         withAnimation(reduced ? nil : .easeInOut(duration: 0.22), completionCriteria: .removed) {
             if cancelled { frame = origin }
@@ -354,8 +361,15 @@ struct CardDragOverlay: View {
     private let drag = CardDragPresentation.shared
     @ViewBuilder private func identifiedSurface(_ surface: AnyView) -> some View {
         if #available(macOS 26.0, *) {
-            surface.glassEffectID("dragged-card", in: namespace)
-        } else { surface }
+            surface
+                .glassEffect(.regular, in: DragToolCardShape(
+                    radius: Constants.Card.cornerRadius,
+                    connectionX: drag.targetFrame.map { $0.midX - drag.frame.minX } ?? drag.frame.width / 2,
+                    connectionHeight: drag.targetFrame == nil ? 0 : 18))
+                .glassEffectID("dragged-card", in: namespace)
+                .animation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .easeInOut(duration: 0.18),
+                           value: drag.targetFrame)
+        } else { surface.compatibleGlassEffect(cornerRadius: Constants.Card.cornerRadius, interactive: false) }
     }
 
     var body: some View {
@@ -368,5 +382,26 @@ struct CardDragOverlay: View {
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
+    }
+}
+
+/// A small top-edge lobe points toward the single native drop destination.
+private struct DragToolCardShape: Shape {
+    let radius: CGFloat
+    var connectionX: CGFloat
+    var connectionHeight: CGFloat
+
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(connectionX, connectionHeight) }
+        set { connectionX = newValue.first; connectionHeight = newValue.second }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path(roundedRect: rect, cornerRadius: radius)
+        if connectionX > radius, connectionX < rect.width - radius, connectionHeight > 0 {
+            path.addEllipse(in: CGRect(x: connectionX - 20, y: -connectionHeight, width: 40,
+                                       height: connectionHeight + 12))
+        }
+        return path
     }
 }
