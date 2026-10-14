@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import Observation
+import OSLog
 
 /// A bounded summary with an explicit full-document affordance.
 struct ClipboardCardView: View {
@@ -153,6 +154,10 @@ struct CardPointerRegion: NSViewRepresentable {
     }
     static func dismantleNSView(_ view: PointerView, coordinator: ()) { view.stopMonitoring() }
     final class PointerView: NSView, NSDraggingSource, HistoryCardSurface {
+        #if DEBUG
+        private static let inputLogger = Logger(subsystem: "com.senseflow.SenseFlow", category: "CardInput")
+        private var pressStartedAt: TimeInterval?
+        #endif
         var isEnabled = true {
             didSet { if !isEnabled { cancelHold() } }
         }
@@ -162,6 +167,7 @@ struct CardPointerRegion: NSViewRepresentable {
         var dragSurface: AnyView?
         private var dragTask: Task<Void, Never>?
         private var dragSessionActive = false
+        private var dragGeneration = UUID()
         private var dragCancelled = false
         private var pressOrigin: NSPoint?
         var onEnter: ((CGRect) -> Void)?
@@ -177,7 +183,7 @@ struct CardPointerRegion: NSViewRepresentable {
             super.viewDidMoveToWindow()
             stopMonitoring()
             guard window != nil else { return }
-            monitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown, .leftMouseDown, .rightMouseUp, .leftMouseUp, .rightMouseDragged, .leftMouseDragged, .scrollWheel]) { [weak self] event in
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown, .leftMouseDown, .rightMouseUp, .leftMouseUp, .rightMouseDragged, .leftMouseDragged, .scrollWheel, .keyDown]) { [weak self] event in
                 guard let self, self.isEnabled else { return event }
                 if event.type == .keyDown {
                     if event.keyCode == 53, self.dragSessionActive { self.dragCancelled = true }
@@ -186,6 +192,10 @@ struct CardPointerRegion: NSViewRepresentable {
                 if event.type == .scrollWheel { self.cancelHold(); return event }
                 if event.type == .leftMouseUp || event.type == .rightMouseUp {
                     guard self.heldButton == event.buttonNumber else { return event }
+                    #if DEBUG
+                    let duration = ProcessInfo.processInfo.systemUptime - (self.pressStartedAt ?? ProcessInfo.processInfo.systemUptime)
+                    Self.inputLogger.debug("release button=\(event.buttonNumber) duration=\(duration) preview=\(self.holdTriggered)")
+                    #endif
                     let selectOnRelease = !self.holdTriggered
                     let releasedInside = self.window.map { window in
                         event.window === window && self.bounds.contains(self.convert(event.locationInWindow, from: nil))
@@ -211,17 +221,27 @@ struct CardPointerRegion: NSViewRepresentable {
                 guard inside else { return event }
                 self.cancelHold()
                 self.heldButton = event.buttonNumber
+                #if DEBUG
+                self.pressStartedAt = ProcessInfo.processInfo.systemUptime
+                Self.inputLogger.debug("press button=\(event.buttonNumber)")
+                #endif
                 self.pressOrigin = event.locationInWindow
                 self.onPressChanged?(true)
                 let timer = Timer(timeInterval: 0.45, repeats: false) { [weak self] _ in
                     guard let self, let window = self.window, let button = self.heldButton,
                           window.isVisible, NSEvent.pressedMouseButtons & (1 << button) != 0,
                           self.bounds.contains(self.convert(window.mouseLocationOutsideOfEventStream, from: nil)) else {
+                        #if DEBUG
+                        Self.inputLogger.debug("hold rejected visible=\(self?.window?.isVisible == true) buttons=\(NSEvent.pressedMouseButtons) held=\(self?.heldButton ?? -1)")
+                        #endif
                         self?.cancelHold()
                         return
                     }
                     self.holdTimer = nil
                     self.holdTriggered = true
+                    #if DEBUG
+                    Self.inputLogger.debug("hold threshold accepted")
+                    #endif
                     self.onPreview?(window.convertToScreen(self.convert(self.bounds, to: nil)))
                 }
                 self.holdTimer = timer
@@ -244,29 +264,31 @@ struct CardPointerRegion: NSViewRepresentable {
         }
         func cancelPendingDrag() { dragTask?.cancel(); dragTask = nil }
         private func beginCardDrag(_ event: NSEvent) {
-            guard dragTask == nil, !dragSessionActive, let loader = loadDragItem,
-                  let root = window?.contentView else { return }
-            let rect = convert(bounds, to: root)
-            let sourceFrame = window?.convertToScreen(root.convert(rect, to: nil)) ?? .zero
-            let image = NSImage(size: bounds.size)
-            if let bitmap = root.bitmapImageRepForCachingDisplay(in: rect) {
-                root.cacheDisplay(in: rect, to: bitmap)
-                image.addRepresentation(bitmap)
-            }
+            guard dragTask == nil, !dragSessionActive, let loader = loadDragItem else { return }
             dragTask = Task { @MainActor [weak self] in
                 guard let self else { return }
                 defer { if !Task.isCancelled { self.dragTask = nil } }
                 do {
                     let payload = try await loader()
                     guard !Task.isCancelled else { return }
-                    guard self.window?.isVisible == true,
+                    guard let window = self.window, window.isVisible,
+                          let root = window.contentView,
                           NSEvent.pressedMouseButtons & 1 != 0 else { self.cancelHold(); return }
+                    // Capture only a still-active drag, using the current slot after loading.
+                    let rect = self.convert(self.bounds, to: root)
+                    let sourceFrame = window.convertToScreen(root.convert(rect, to: nil))
+                    let image = NSImage(size: self.bounds.size)
+                    if let bitmap = root.bitmapImageRepForCachingDisplay(in: rect) {
+                        root.cacheDisplay(in: rect, to: bitmap)
+                        image.addRepresentation(bitmap)
+                    }
                     let item = NSDraggingItem(pasteboardWriter: payload)
                     item.setDraggingFrame(self.bounds, contents: image)
                     if let surface = self.dragSurface {
                         CardDragPresentation.shared.begin(surface: surface, frame: sourceFrame, window: self.window, nativeItem: item)
                     }
                     self.dragCancelled = false
+                    self.dragGeneration = UUID()
                     self.dragSessionActive = true
                     self.onDragStateChanged?(true)
                     let session = self.beginDraggingSession(with: [item], event: event, source: self)
@@ -286,8 +308,9 @@ struct CardPointerRegion: NSViewRepresentable {
                 && CardDragPresentation.shared.deliverOnRelease(
                 at: screenPoint, text: session.draggingPasteboard.string(forType: .string))
             let returnFrame = window.map { $0.convertToScreen(convert(bounds, to: nil)) }
+            let finishingGeneration = dragGeneration
             CardDragPresentation.shared.finish(cancelled: operation.isEmpty && !delivered, returnFrame: returnFrame) { [weak self] in
-                guard self?.dragSessionActive != true else { return }
+                guard self?.dragGeneration == finishingGeneration else { return }
                 self?.onDragStateChanged?(false)
             }
         }

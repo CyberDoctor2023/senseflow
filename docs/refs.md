@@ -612,3 +612,5 @@ Apple Doc MCP核对withAnimation(_:completionCriteria:_:completion:)在所有动
 - 阶段 28 滚动惯性：Apple Doc MCP 查询 [NSEvent.momentumPhase](https://developer.apple.com/documentation/appkit/nsevent/momentumphase) 与 [NSScrollView.horizontalScrollElasticity](https://developer.apple.com/documentation/appkit/nsscrollview/horizontalscrollelasticity)。无系统惯性的鼠标补充衰减参数为项目选择，非苹果官方预设。
 
 - 阶段 29 平台动效：Apple Doc MCP 确认 NSView.displayLink（macOS14）同步视图所在显示器，Spring 提供 smooth/snappy/bouncy 及位置/速度计算，SymbolEffect 提供原生符号反馈，CAMediaTimingFunction(name:) 使用命名曲线。事实、链接、不能原生替代的边界与原生验证见 [动效平台替换合同](MOTION_PLATFORM_2026-10-08.md)。普通鼠标惯性事件适配属于应用逻辑，不把公开 API 当作苹果 Dock 公式或官方长按阈值。
+
+- 2026-10-14 输入诊断：Apple Doc MCP AppKit 查询确认 [addLocalMonitorForEvents(matching:handler:)](https://developer.apple.com/documentation/appkit/nsevent/addlocalmonitorforevents(matching:handler:)) 接收应用派发前与指定 mask 匹配的事件；[EventTypeMask.keyDown](https://developer.apple.com/documentation/appkit/nsevent/eventtypemask/keydown) 是键盘按下事件掩码。因此 Escape 分支必须将 keyDown 纳入订阅，不能只实现 handler 分支。文档不保证原生拖放的嵌套事件循环必定经过该 monitor，仍需运行验证。

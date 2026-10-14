@@ -254,7 +254,7 @@ struct EmptyBackgroundView: View {
                 .accessibilityLabel(tool.name)
                 .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: [.command, .shift])
                 .overlay {
-                    NativeToolDropTarget(enabled: runningTool == nil, reduceMotion: reduceMotion,
+                    NativeToolDropTarget(enabled: toolsEngaged && runningTool == nil, reduceMotion: reduceMotion,
                         symbol: toolSymbol(tool), number: index + 1,
                         onTargetChanged: { targeted in
                             if targeted { targetedTool = tool.id }
