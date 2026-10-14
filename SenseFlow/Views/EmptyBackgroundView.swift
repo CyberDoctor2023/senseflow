@@ -28,6 +28,7 @@ struct EmptyBackgroundView: View {
     @FocusState private var isSearchFocused: Bool
     @Binding var isExpanded: Bool  // 由父视图控制
     @State private var tools: [PromptTool] = []
+    @State private var toolRevision = UUID()
     @State private var hoveredTool: UUID?
     @State private var targetedTool: UUID?
     @State private var runningTool: UUID?
@@ -90,9 +91,12 @@ struct EmptyBackgroundView: View {
                 staticBody
             }
         }
-        .task { await reloadTools() }
+        .task(id: toolRevision) { await reloadTools() }
+        .onReceive(NotificationCenter.default.publisher(for: .promptToolsDidUpdate).receive(on: RunLoop.main)) { _ in
+            toolRevision = UUID()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .windowWillShow)) { _ in
-            Task { await reloadTools() }
+            toolRevision = UUID()
         }
         .alert("工具未完成", isPresented: Binding(get: { toolError != nil }, set: { if !$0 { toolError = nil } })) {
             Button("好", role: .cancel) { toolError = nil }
@@ -257,8 +261,19 @@ struct EmptyBackgroundView: View {
     }
 
     @MainActor private func reloadTools() async {
-        do { tools = try await AppDependencies.shared.promptToolCoordinator.loadTools().filter { !$0.isSmart } }
-        catch { toolError = error.localizedDescription }
+        do {
+            let current = try await AppDependencies.shared.promptToolCoordinator.loadTools().filter { !$0.isSmart }
+            try Task.checkCancellation()
+            tools = current
+            if let targetedTool, !current.contains(where: { $0.id == targetedTool }) { self.targetedTool = nil }
+            if let hoveredTool, !current.contains(where: { $0.id == hoveredTool }) { self.hoveredTool = nil }
+        } catch is CancellationError {
+            // A newer repository change owns the next toolbar snapshot.
+        } catch {
+            guard !Task.isCancelled else { return }
+            tools = []
+            toolError = error.localizedDescription
+        }
     }
 
     @MainActor private func runTool(_ tool: PromptTool, input: String?) {

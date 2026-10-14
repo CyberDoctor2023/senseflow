@@ -16,3 +16,8 @@
 - 吸附反馈当前是目标圆球放大/抬升/阴影；尚未实现卡片向圆球变形融合，不能宣称原生 Liquid Glass 卡片吸附已完成。
 - build-tool-drop.log：BUILD SUCCEEDED；git diff --check 通过。旧应用备份后安装并启动，进程 28527。
 - 原生 UI 验证受阻：cua.getApp 返回 noWindowsAvailable，cua.getState 超时并重置。真实拖放命中、快捷键窗口作用域、首次 AI 请求与吸附视觉仍待实际运行验收，未请求模型以避免发送真实历史文字。
+
+## 工具与圆球同步合同
+圆球只呈现同一工具仓库中的工具，不能有单独的创建/删除配置。订阅已有 promptToolsDidUpdate 通知，在主线程触发刷新；刷新任务取消旧请求，忽略过期返回。新增、删除、修改与恢复默认工具均实时反映。执行仍按 ID 从仓库读取当前工具，UI 不持有提示词执行逻辑。
+
+同步修复验证：build-tool-sync.log BUILD SUCCEEDED；diff --check 通过。已备份旧应用、安装并启动同步修复版；设置内删除后圆球实时消失的 UI 实测尚未完成。
