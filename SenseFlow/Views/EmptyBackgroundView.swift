@@ -27,6 +27,7 @@ struct EmptyBackgroundView: View {
     @ObservedObject var viewModel: ClipboardListViewModel
     @FocusState private var isSearchFocused: Bool
     @Binding var isExpanded: Bool  // 由父视图控制
+    var toolRestingOffset: CGFloat
     @State private var tools: [PromptTool] = []
     @State private var toolRevision = UUID()
     @State private var hoveredTool: UUID?
@@ -208,23 +209,13 @@ struct EmptyBackgroundView: View {
 
     private var showsTools: Bool { toolsEngaged || viewModel.actions.pressedItemID != nil }
 
-    @ViewBuilder private var contextualToolTargets: some View {
-        if showsTools {
-            if #available(macOS 26.0, *) {
-                toolTargets
-                    .scaleEffect(toolsEngaged ? 1 : 0.65, anchor: .bottom)
-                    .opacity(toolsEngaged ? 1 : 0.35)
-                    .allowsHitTesting(toolsEngaged)
-                    .glassEffectTransition(.materialize)
-                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
-            } else {
-                toolTargets
-                    .scaleEffect(toolsEngaged ? 1 : 0.65, anchor: .bottom)
-                    .opacity(toolsEngaged ? 1 : 0.35)
-                    .allowsHitTesting(toolsEngaged)
-                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
-            }
-        }
+    private var contextualToolTargets: some View {
+        toolTargets
+            .offset(y: toolsEngaged ? 0 : (showsTools ? toolRestingOffset - 6 : toolRestingOffset + config.buttonSize / 2 + 6))
+            .allowsHitTesting(toolsEngaged)
+            .accessibilityHidden(!toolsEngaged)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.28), value: toolsEngaged)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: showsTools)
     }
 
     private var toolTargets: some View {
@@ -240,6 +231,7 @@ struct EmptyBackgroundView: View {
                         } }
                     }
                     .font(.pingFang(size: config.iconSize))
+                    .opacity(toolsEngaged ? 1 : 0)
                     .frame(width: config.buttonSize, height: config.buttonSize)
                 }
                 .buttonStyle(.plain)
@@ -511,7 +503,7 @@ private struct ToolGlassSurface: ViewModifier {
             content
                 .glassEffect(.regular, in: .circle)
                 .glassEffectID(id, in: namespace)
-                .glassEffectTransition(.materialize)
+                .glassEffectTransition(.matchedGeometry)
         } else {
             content.background(.thinMaterial, in: Circle())
         }

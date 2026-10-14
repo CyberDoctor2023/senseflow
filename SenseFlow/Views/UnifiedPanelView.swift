@@ -88,20 +88,24 @@ struct UnifiedPanelView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            HistoryBackdrop(height: mainContainerConfig.windowHeight(cardConfig: cardConfig),
-                            cornerRadius: mainContainerConfig.cornerRadius)
-                .compatibleGlassGroup(spacing: 0)
-                .onboardingTarget(.history, radius: mainContainerConfig.cornerRadius)
-            // Search and background keep their original baseline while a card grows above them.
-            VStack(spacing: 0) {
-                EmptyBackgroundView(viewModel: viewModel, isExpanded: $isSearchBarExpanded)
-                    .frame(height: topConfig.windowHeight)
-                    .allowsHitTesting(handoff == nil || handoff?.outgoingModel == nil)
-                Color.clear
-                    .frame(height: topConfig.gapFromMainWindow + mainContainerConfig.windowHeight(cardConfig: cardConfig))
-                    .allowsHitTesting(false)
+            ZStack(alignment: .bottom) {
+                HistoryBackdrop(height: mainContainerConfig.windowHeight(cardConfig: cardConfig),
+                                cornerRadius: mainContainerConfig.cornerRadius)
+                    .onboardingTarget(.history, radius: mainContainerConfig.cornerRadius)
+                // Search and background keep their original baseline while a card grows above them.
+                VStack(spacing: 0) {
+                    EmptyBackgroundView(viewModel: viewModel, isExpanded: $isSearchBarExpanded,
+                                        toolRestingOffset: topConfig.windowHeight / 2 + topConfig.gapFromMainWindow)
+                        .frame(height: topConfig.windowHeight)
+                        .allowsHitTesting(handoff == nil || handoff?.outgoingModel == nil)
+                    Color.clear
+                        .frame(height: topConfig.gapFromMainWindow + mainContainerConfig.windowHeight(cardConfig: cardConfig))
+                        .allowsHitTesting(false)
+                }
+                .frame(height: topConfig.windowHeight + topConfig.gapFromMainWindow + mainContainerConfig.windowHeight(cardConfig: cardConfig))
+
             }
-            .frame(height: topConfig.windowHeight + topConfig.gapFromMainWindow + mainContainerConfig.windowHeight(cardConfig: cardConfig))
+            .compatibleGlassGroup(spacing: 12)
 
             GeometryReader { geometry in
                 ZStack {
@@ -136,7 +140,7 @@ struct UnifiedPanelView: View {
         .padding(.bottom, Constants.ClipboardWindow.shadowBleedBottom)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .overlay(alignment: .topLeading) { CardDragOverlay() }
-        .compatibleGlassGroup(spacing: 26)
+        .compatibleGlassGroup(spacing: 12)
         .containerBackground(.clear, for: .window)  // 窗口级背景透明
         .font(.pingFang(size: 13))
         .contextualOnboarding(onboarding, hasRecords: !viewModel.items.isEmpty)
