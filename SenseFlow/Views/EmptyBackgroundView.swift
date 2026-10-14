@@ -114,6 +114,8 @@ struct EmptyBackgroundView: View {
     private var glassBody: some View {
         Group {
             HStack(spacing: elementSpacing) {
+                GlassEffectContainer(spacing: isExpanded ? 0 : glassSpacing) {
+                HStack(spacing: elementSpacing) {
                 // 搜索胶囊：左边固定，右边伸缩
                 // 收起时覆盖圆球区域（一条完整的 bar）
                 // 展开时缩窄，让圆球从右侧分离出来
@@ -144,6 +146,9 @@ struct EmptyBackgroundView: View {
                     }
                     .contentShape(Rectangle())
                     .onContinuousHover { updateCategoryHover($0) }
+                }
+
+                }
                 }
 
                 Spacer()
@@ -239,7 +244,11 @@ struct EmptyBackgroundView: View {
                 }
                 .buttonStyle(.plain)
                 .modifier(ToolGlassSurface(size: config.buttonSize, id: tool.id, namespace: glassNamespace))
-                .scaleEffect(hoveredTool == tool.id ? Constants.SelectionFeedback.scale : 1)
+                .scaleEffect(targetedTool == tool.id ? 1.16 : (hoveredTool == tool.id ? Constants.SelectionFeedback.scale : 1))
+                .overlay {
+                    Circle().stroke(.primary.opacity(targetedTool == tool.id ? 0.28 : 0), lineWidth: 1.5)
+                        .allowsHitTesting(false)
+                }
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: targetedTool)
                 .onHover { inside in
                     if inside { hoveredTool = tool.id }

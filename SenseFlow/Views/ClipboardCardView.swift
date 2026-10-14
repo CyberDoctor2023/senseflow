@@ -265,7 +265,7 @@ struct CardPointerRegion: NSViewRepresentable {
                     self.dragSessionActive = true
                     self.onDragStateChanged?(true)
                     let session = self.beginDraggingSession(with: [item], event: event, source: self)
-                    session.animatesToStartingPositionsOnCancelOrFail = true
+                    session.animatesToStartingPositionsOnCancelOrFail = false
                 } catch { if !Task.isCancelled { self.cancelHold() } }
             }
         }
@@ -274,10 +274,12 @@ struct CardPointerRegion: NSViewRepresentable {
             CardDragPresentation.shared.move(to: screenPoint, session: session)
         }
         func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
-            CardDragPresentation.shared.finish(cancelled: operation.isEmpty)
+            session.animatesToStartingPositionsOnCancelOrFail = !CardDragPresentation.shared.inside
             dragSessionActive = false
             cancelHold()
-            onDragStateChanged?(false)
+            CardDragPresentation.shared.finish(cancelled: operation.isEmpty) { [weak self] in
+                self?.onDragStateChanged?(false)
+            }
         }
         func ignoreModifierKeys(for session: NSDraggingSession) -> Bool { true }
         private var tracking: NSTrackingArea?
@@ -333,14 +335,15 @@ struct CardPointerRegion: NSViewRepresentable {
             item.imageComponentsProvider = nextInside ? { [] } : { components }
         }
     }
-    func finish(cancelled: Bool) {
+    func finish(cancelled: Bool, completion: @escaping () -> Void) {
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         withAnimation(reduced ? nil : .easeInOut(duration: 0.22), completionCriteria: .removed) {
             if cancelled { frame = origin }
-            opacity = 0
+            if !cancelled { opacity = 0 }
         } completion: { [weak self] in
             self?.surface = nil
             self?.owner = nil
+            completion()
         }
     }
 }
