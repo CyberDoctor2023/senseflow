@@ -39,7 +39,7 @@ struct ClipboardCardView: View {
             try await actions.makeDragPasteboardItem(item)
         }, onDragStateChanged: { active in
             dragging = active
-            actions.setDragging(active)
+            actions.setDragging(active || CardDragPresentation.shared.surface != nil)
         }, onEnter: { bounds in
             hovered = true
             onPointerPresenceChanged?(true)
@@ -287,6 +287,7 @@ struct CardPointerRegion: NSViewRepresentable {
                 at: screenPoint, text: session.draggingPasteboard.string(forType: .string))
             let returnFrame = window.map { $0.convertToScreen(convert(bounds, to: nil)) }
             CardDragPresentation.shared.finish(cancelled: operation.isEmpty && !delivered, returnFrame: returnFrame) { [weak self] in
+                guard self?.dragSessionActive != true else { return }
                 self?.onDragStateChanged?(false)
             }
         }
@@ -331,11 +332,13 @@ struct CardPointerRegion: NSViewRepresentable {
     @ObservationIgnored private let tools = NSHashTable<NSView>.weakObjects()
     @ObservationIgnored private weak var selectedTool: (any CardToolDropSurface)?
     @ObservationIgnored private var delivered = false
+    @ObservationIgnored private var generation = UUID()
     @ObservationIgnored private var origin = CGRect.zero
     @ObservationIgnored private var offset = CGPoint.zero
     @ObservationIgnored private var nativeComponents: [NSDraggingImageComponent] = []
 
     func begin(surface: AnyView, frame: CGRect, window: NSWindow?, nativeItem: NSDraggingItem) {
+        generation = UUID()
         clearTarget()
         delivered = false
         self.surface = surface
@@ -383,7 +386,9 @@ struct CardPointerRegion: NSViewRepresentable {
             guard let score = CardToolGeometry.connectionScore(card: frame, tool: rect) else { return nil }
             return (tool, rect, score)
         }
-        guard let best = candidates.min(by: { $0.2 < $1.2 }) else { clearTarget(); return }
+        guard let best = candidates.min(by: {
+            $0.2 == $1.2 ? $0.0.toolNumber < $1.0.toolNumber : $0.2 < $1.2
+        }) else { clearTarget(); return }
         if selectedTool !== best.0 {
             clearTarget()
             selectedTool = best.0
@@ -414,14 +419,17 @@ struct CardPointerRegion: NSViewRepresentable {
     }
 
     func finish(cancelled: Bool, returnFrame: CGRect? = nil, completion: @escaping () -> Void) {
+        let finishingGeneration = generation
         clearTarget()
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         withAnimation(reduced ? nil : .easeInOut(duration: 0.22), completionCriteria: .removed) {
             if cancelled { frame = returnFrame ?? origin }
             if !cancelled { opacity = 0 }
         } completion: { [weak self] in
-            self?.surface = nil
-            self?.owner = nil
+            if self?.generation == finishingGeneration {
+                self?.surface = nil
+                self?.owner = nil
+            }
             completion()
         }
     }
