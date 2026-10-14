@@ -210,7 +210,6 @@ struct EmptyBackgroundView: View {
                     .scaleEffect(toolsEngaged ? 1 : 0.65, anchor: .bottom)
                     .opacity(toolsEngaged ? 1 : 0.35)
                     .allowsHitTesting(toolsEngaged)
-                    .glassEffectID("contextual-tools", in: glassNamespace)
                     .glassEffectTransition(.materialize)
                     .transition(.opacity.combined(with: .scale(scale: 0.85)))
             } else {
@@ -224,7 +223,7 @@ struct EmptyBackgroundView: View {
     }
 
     private var toolTargets: some View {
-        HStack(spacing: elementSpacing) {
+        HStack(spacing: 36) {
             ForEach(Array(tools.prefix(9).enumerated()), id: \.element.id) { index, tool in
                 Button {
                     runTool(tool, input: nil)
@@ -239,9 +238,8 @@ struct EmptyBackgroundView: View {
                     .frame(width: config.buttonSize, height: config.buttonSize)
                 }
                 .buttonStyle(.plain)
-                .compatibleGlassEffect(cornerRadius: config.buttonSize / 2, interactive: false)
+                .modifier(ToolGlassSurface(size: config.buttonSize, id: tool.id, namespace: glassNamespace))
                 .scaleEffect(hoveredTool == tool.id ? Constants.SelectionFeedback.scale : 1)
-                .shadow(color: .black.opacity(targetedTool == tool.id ? 0.18 : 0), radius: 10, y: 4)
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: targetedTool)
                 .onHover { inside in
                     if inside { hoveredTool = tool.id }
@@ -490,6 +488,23 @@ private struct NativeToolDropTarget: NSViewRepresentable {
         }
         override func draggingEnded(_ sender: any NSDraggingInfo) {
             onTargetChanged?(false)
+        }
+    }
+}
+
+/// Each tool keeps its own glass identity; proximity merging is owned by the shared container.
+private struct ToolGlassSurface: ViewModifier {
+    let size: CGFloat
+    let id: UUID
+    let namespace: Namespace.ID
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content
+                .glassEffect(.regular, in: .circle)
+                .glassEffectID(id, in: namespace)
+                .glassEffectTransition(.materialize)
+        } else {
+            content.background(.thinMaterial, in: Circle())
         }
     }
 }

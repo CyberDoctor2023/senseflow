@@ -347,10 +347,17 @@ struct CardPointerRegion: NSViewRepresentable {
 
 /// Renders the same card content above history, sharing native glass merging with the toolbar.
 struct CardDragOverlay: View {
+    @Namespace private var namespace
     private let drag = CardDragPresentation.shared
+    @ViewBuilder private func identifiedSurface(_ surface: AnyView) -> some View {
+        if #available(macOS 26.0, *) {
+            surface.glassEffectID("dragged-card", in: namespace)
+        } else { surface }
+    }
+
     var body: some View {
         if drag.inside, let surface = drag.surface {
-            surface
+            identifiedSurface(surface)
                 .frame(width: drag.frame.width, height: drag.frame.height)
                 .position(x: drag.frame.midX - drag.ownerFrame.minX,
                           y: drag.ownerFrame.maxY - drag.frame.midY)

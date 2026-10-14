@@ -136,7 +136,7 @@ struct UnifiedPanelView: View {
         .padding(.bottom, Constants.ClipboardWindow.shadowBleedBottom)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .overlay(alignment: .topLeading) { CardDragOverlay() }
-        .compatibleGlassGroup(spacing: 18)
+        .compatibleGlassGroup(spacing: 26)
         .containerBackground(.clear, for: .window)  // 窗口级背景透明
         .font(.pingFang(size: 13))
         .contextualOnboarding(onboarding, hasRecords: !viewModel.items.isEmpty)
