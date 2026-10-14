@@ -310,7 +310,8 @@ final class PromptToolCoordinator {
     /// 【错误处理】
     /// - 工具不存在：抛出 CoordinatorError.toolNotFound
     /// - 执行失败：抛出 Use Case 的错误
-    func executeTool(id: ToolID) async throws {
+    @discardableResult
+    func executeTool(id: ToolID, input: String? = nil, autoPaste: Bool = true) async throws -> String {
         // 【步骤 1】查找工具
         // guard let 模式：早期返回，避免嵌套
         guard let tool = try await repository.find(by: id) else {
@@ -321,7 +322,7 @@ final class PromptToolCoordinator {
         // 【步骤 2】委托给 Use Case 执行
         // 注意：Coordinator 不关心执行的细节
         // 所有业务逻辑都在 Use Case 中
-        _ = try await executeToolUseCase.execute(tool: tool)
+        return try await executeToolUseCase.execute(tool: tool, input: input, autoPaste: autoPaste)
     }
 
     // MARK: - Initialization（初始化流程）
@@ -456,7 +457,7 @@ final class PromptToolCoordinator {
                     }
                 }
             } catch {
-                print("⚠️ 跳过 Tool 快捷键注册失败：\\(tool.name) (\\(error.localizedDescription))")
+                print("⚠️ 跳过 Tool 快捷键注册失败：\(tool.name) (\(error.localizedDescription))")
             }
         }
     }

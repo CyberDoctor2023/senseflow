@@ -326,7 +326,12 @@ final class AppHotKeyCoordinator: @unchecked Sendable {
     func registerAllHotKeys() async {
         _ = registerMainHotKey()
         _ = registerSmartHotKey()
-        try? await AppDependencies.shared.promptToolCoordinator.registerAllHotKeys()
+        do {
+            try await AppDependencies.shared.promptToolCoordinator.initializeDefaultToolsIfNeeded()
+            try await AppDependencies.shared.promptToolCoordinator.registerAllHotKeys()
+        } catch {
+            NotificationService.shared.showError(title: "一组工具", body: "无法加载工具快捷键，请重新启动应用。")
+        }
     }
 
     /// 应用退出时统一注销所有快捷键

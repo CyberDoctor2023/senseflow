@@ -23,7 +23,7 @@ class AutoPasteManager {
 
     /// 执行自动粘贴（模拟 Cmd+V）
     /// - Parameter delay: 延迟时间（秒），默认 0.15s
-    func performAutoPaste(delay: TimeInterval = 0.15) {
+    func performAutoPaste(delay: TimeInterval = 0.15, expectedTargetPID: pid_t? = nil) {
         print("🔄 开始自动粘贴流程...")
 
         // 检查权限
@@ -37,6 +37,10 @@ class AutoPasteManager {
 
         // 延迟执行，避免窗口截获事件
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            if let expectedTargetPID,
+               NSWorkspace.shared.frontmostApplication?.processIdentifier != expectedTargetPID {
+                return
+            }
             print("⏰ 延迟结束，开始模拟 Cmd+V")
             self?.simulateCmdV()
         }

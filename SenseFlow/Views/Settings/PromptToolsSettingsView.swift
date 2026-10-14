@@ -36,6 +36,7 @@ struct PromptToolsSettingsView: View {
     }
 
     @State private var editorMode: EditorMode?
+    @State private var runningTool: PromptTool?
 
     // AI 服务配置
     @State private var selectedService: AIServiceType = .openai
@@ -134,7 +135,9 @@ struct PromptToolsSettingsView: View {
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(tools.filter { !$0.isSmart }) { tool in
-                            ToolRowView(tool: tool, onEdit: {
+                            ToolRowView(tool: tool, onRun: {
+                                runningTool = tool
+                            }, onEdit: {
                                 // 如果是云端工具，提示复制后编辑
                                 if tool.isCloudManaged {
                                     // 创建本地副本
@@ -318,6 +321,9 @@ struct PromptToolsSettingsView: View {
         } message: {
             Text(toolSaveErrorMessage)
         }
+        .sheet(item: $runningTool) { tool in
+            ToolRunView(tool: tool, coordinator: dependencies.promptToolCoordinator)
+        }
     }
 
     // MARK: - Private Methods
@@ -440,6 +446,7 @@ struct PromptToolsSettingsView: View {
 
 struct ToolRowView: View {
     let tool: PromptTool
+    let onRun: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
 
@@ -494,6 +501,8 @@ struct ToolRowView: View {
 
                 // 操作按钮
                 HStack(spacing: 8) {
+                    Button("使用", action: onRun)
+                        .buttonStyle(.borderless)
                     Button {
                         onEdit()
                     } label: {
@@ -541,6 +550,56 @@ struct ToolRowView: View {
         .padding(.vertical, Constants.spacing8)
         .padding(.horizontal, Constants.spacing12)
         .background(.primary.opacity(0.025), in: .rect(cornerRadius: 12))
+    }
+}
+
+/// Mouse invocation exposes the input and result before the user pastes elsewhere.
+private struct ToolRunView: View {
+    let tool: PromptTool
+    let coordinator: PromptToolCoordinator
+    @Environment(\.dismiss) private var dismiss
+    @State private var input = ""
+    @State private var result: String?
+    @State private var errorMessage: String?
+    @State private var isRunning = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(tool.name).font(.pingFang(.title2)).fontWeight(.semibold)
+            Text("输入文字").font(.pingFang(.headline))
+            TextEditor(text: $input)
+                .font(.pingFang(.body))
+                .frame(minHeight: 140)
+                .disabled(isRunning)
+            if let result {
+                Text("结果 · 已复制").font(.pingFang(.headline))
+                ScrollView { Text(result).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+                    .frame(maxHeight: 180)
+            }
+            if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
+            HStack {
+                Button("关闭") { dismiss() }.disabled(isRunning)
+                Spacer()
+                if isRunning { ProgressView().controlSize(.small) }
+                Button("处理") {
+                    isRunning = true
+                    errorMessage = nil
+                    result = nil
+                    Task { @MainActor in
+                        defer { isRunning = false }
+                        do {
+                            result = try await coordinator.executeTool(id: tool.toolID, input: input, autoPaste: false)
+                        } catch { errorMessage = error.localizedDescription }
+                    }
+                }
+                .compatibleButtonStyle(prominent: true)
+                .disabled(isRunning || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(24)
+        .frame(width: 560)
+        .onAppear { input = NSPasteboard.general.string(forType: .string) ?? "" }
+        .interactiveDismissDisabled(isRunning)
     }
 }
 

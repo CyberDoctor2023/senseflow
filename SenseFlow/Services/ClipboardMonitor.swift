@@ -35,12 +35,12 @@ class ClipboardMonitor {
     private let capturePreparationQueue = DispatchQueue(label: "top.senseflow.clipboard-prepare", qos: .utility)
     private var captureGeneration = UUID()
     private var lastChangeCount: Int = 0
-    private let pasteboard = NSPasteboard.general
-    private var shouldIgnoreNextChange: Bool = false  // 忽略下一次剪贴板变化（用于写入剪贴板时避免循环）
+    private let pasteboard: NSPasteboard
 
     // MARK: - Initialization
 
-    private init() {
+    init(pasteboard: NSPasteboard = .general) {
+        self.pasteboard = pasteboard
         lastChangeCount = pasteboard.changeCount
     }
 
@@ -82,48 +82,23 @@ class ClipboardMonitor {
         logger.info("剪贴板监听已停止")
     }
 
-    /// 忽略下一次剪贴板变化（用于写入剪贴板时避免循环捕获）
-    ///
-    /// 【设计说明】
-    /// 使用标志位而非时间暂停，精确忽略"我们自己触发的"剪贴板变化
-    /// 优点：
-    /// - ✅ 只忽略下一次变化（精确）
-    /// - ✅ 不依赖时间窗口
-    /// - ✅ 不会误伤用户的快速操作
-    func ignoreNextChange() {
-        shouldIgnoreNextChange = true
-        logger.debug("标记：忽略下一次剪贴板变化")
-    }
-
-    /// 暂停监听（兼容旧接口，内部调用 ignoreNextChange）
-    @available(*, deprecated, message: "使用 ignoreNextChange() 替代")
-    func pauseMonitoring(duration: TimeInterval = BusinessRules.ClipboardMonitor.defaultPauseDuration) {
-        ignoreNextChange()
+    /// Call immediately after an internal write on the main thread, before polling resumes.
+    /// A later external clipboard version remains eligible for capture.
+    func acknowledgeInternalWrite() {
+        lastChangeCount = pasteboard.changeCount
+        logger.debug("已确认应用内部剪贴板写入")
     }
 
     // MARK: - Private Methods
 
     @objc private func checkPasteboard() {
-        guard shouldProcessPasteboard() else { return }
-
         if pasteboardDidChange() {
             processPasteboardContent()
         }
     }
 
-    /// 判断是否应该处理剪贴板
-    private func shouldProcessPasteboard() -> Bool {
-        // 检查是否需要忽略这次变化
-        if shouldIgnoreNextChange {
-            shouldIgnoreNextChange = false  // 重置标志
-            logger.debug("忽略本次剪贴板变化（自触发）")
-            return false
-        }
-        return true
-    }
-
     /// 检查剪贴板是否发生变化
-    private func pasteboardDidChange() -> Bool {
+    func pasteboardDidChange() -> Bool {
         let currentChangeCount = pasteboard.changeCount
         let hasChanged = currentChangeCount != lastChangeCount
 

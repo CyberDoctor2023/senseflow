@@ -54,10 +54,6 @@ import SwiftUI
         // 初始化数据库（自动执行迁移）
         _ = DatabaseManager.shared
 
-        // v0.2: 初始化 Prompt Tools（首次启动时创建默认工具）
-        Task {
-            try? await AppDependencies.shared.promptToolCoordinator.initializeDefaultToolsIfNeeded()
-        }
 
         // v0.5: 启动 Langfuse 同步服务（如果已配置）
         if LangfuseSyncService.shared.isSyncEnabled {

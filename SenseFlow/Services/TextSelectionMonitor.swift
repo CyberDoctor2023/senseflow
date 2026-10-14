@@ -131,13 +131,12 @@ class TextSelectionMonitor {
 
     /// 复制文本到剪贴板
     private func copyToClipboard(_ text: String) {
-        // 暂停 ClipboardMonitor 避免循环捕获
-        ClipboardMonitor.shared.ignoreNextChange()
 
         // 写入剪贴板
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
+        ClipboardMonitor.shared.acknowledgeInternalWrite()
     }
 
     // MARK: - Settings
