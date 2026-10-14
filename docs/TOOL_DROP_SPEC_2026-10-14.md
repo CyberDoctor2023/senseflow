@@ -36,3 +36,8 @@
 按压微反馈补充：按下立即呈现 65% 尺寸、35% 不透明度的圆球趋势，不可点击；既有 450ms 长按被受理或启动拖动时，用原生 spring(duration:bounce:) 完整出现。短按松开收回，不新增独立等待定时器。只记录当前按压卡片 ID，其他卡片的取消回调不能清除正在按压的卡片状态。
 
 本批实现验证：build-live-card-drag.log BUILD SUCCEEDED；diff --check 通过。已备份、安装并启动。初次构建发现 NSWindow.Level.dragging 不存在，改用 AppKit 已有 popUpMenu 层级；最终构建覆盖本批全部更改。实际动态玻璃拖动、预览底边与圆球间距、按压曲线和从编辑快照调用真实模型的体验未完成 UI 验收。
+
+## 原生融合合同修正
+吸附指同一 GlassEffectContainer 中的边缘融合，不是位置锁定，也不是 copy 加号。删除独立浮动卡片窗口：窗口内拖动用同一 SwiftUI 玻璃容器中的完整卡片，位置连续跟随指针；工具区域不自动居中锁定。移出工作窗口时保留系统原生拖放载荷与完整拖拽图像，不创建会影响输入焦点的新窗口。窗口内工具采用 generic 操作，不显示 copy 加号；外部输入框继续采用 copy。Apple Doc MCP 已确认 GlassEffectContainer、glassEffectUnion。
+
+原生融合结构修正：build-native-glass-drag.log BUILD SUCCEEDED；diff --check 通过。已备份安装并启动。删除独立 NSPanel、位置吸附与卡片截图窗口内呈现；外部目标仍使用原生拖拽图像与载荷。真实边缘融合、透明白色一致性和外部输入框接收尚未完成 UI 实测，不能把架构修正当作已验证修复。

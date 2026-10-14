@@ -1,6 +1,6 @@
 import SwiftUI
 import AppKit
-import QuartzCore
+import Observation
 
 /// A bounded summary with an explicit full-document affordance.
 struct ClipboardCardView: View {
@@ -244,7 +244,11 @@ struct CardPointerRegion: NSViewRepresentable {
                   let root = window?.contentView else { return }
             let rect = convert(bounds, to: root)
             let sourceFrame = window?.convertToScreen(root.convert(rect, to: nil)) ?? .zero
-            let image = NSImage(size: bounds.size) // The native session carries payload; the live panel renders the card.
+            let image = NSImage(size: bounds.size)
+            if let bitmap = root.bitmapImageRepForCachingDisplay(in: rect) {
+                root.cacheDisplay(in: rect, to: bitmap)
+                image.addRepresentation(bitmap)
+            }
             dragTask = Task { @MainActor [weak self] in
                 guard let self else { return }
                 defer { if !Task.isCancelled { self.dragTask = nil } }
@@ -256,7 +260,7 @@ struct CardPointerRegion: NSViewRepresentable {
                     let item = NSDraggingItem(pasteboardWriter: payload)
                     item.setDraggingFrame(self.bounds, contents: image)
                     if let surface = self.dragSurface {
-                        CardDragPresentation.shared.begin(surface: surface, frame: sourceFrame)
+                        CardDragPresentation.shared.begin(surface: surface, frame: sourceFrame, window: self.window, nativeItem: item)
                     }
                     self.dragSessionActive = true
                     self.onDragStateChanged?(true)
@@ -265,9 +269,9 @@ struct CardPointerRegion: NSViewRepresentable {
                 } catch { if !Task.isCancelled { self.cancelHold() } }
             }
         }
-        func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation { .copy }
+        func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation { context == .withinApplication ? .generic : .copy }
         func draggingSession(_ session: NSDraggingSession, movedTo screenPoint: NSPoint) {
-            CardDragPresentation.shared.move(to: screenPoint)
+            CardDragPresentation.shared.move(to: screenPoint, session: session)
         }
         func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
             CardDragPresentation.shared.finish(cancelled: operation.isEmpty)
@@ -292,70 +296,67 @@ struct CardPointerRegion: NSViewRepresentable {
     }
 }
 
-/// A live native glass surface follows the drag; the drag-local pasteboard remains independent.
-@MainActor final class CardDragPresentation {
+/// Presents the dragged card in the same glass container as its tool targets.
+@MainActor @Observable final class CardDragPresentation {
     static let shared = CardDragPresentation()
-    private var panel: NSPanel?
-    private var origin = CGRect.zero
-    private var offset = CGPoint.zero
-    private var target: CGRect?
-    private var pointer = CGPoint.zero
+    private(set) var surface: AnyView?
+    private(set) var frame = CGRect.zero
+    private(set) var ownerFrame = CGRect.zero
+    private(set) var inside = false
+    private(set) var opacity: Double = 1
+    @ObservationIgnored private weak var owner: NSWindow?
+    @ObservationIgnored private var origin = CGRect.zero
+    @ObservationIgnored private var offset = CGPoint.zero
+    @ObservationIgnored private var nativeComponents: [NSDraggingImageComponent] = []
 
-    func begin(surface: AnyView, frame: CGRect) {
-        panel?.orderOut(nil)
+    func begin(surface: AnyView, frame: CGRect, window: NSWindow?, nativeItem: NSDraggingItem) {
+        self.surface = surface
+        self.frame = frame
         origin = frame
-        pointer = NSEvent.mouseLocation
+        owner = window
+        ownerFrame = window?.frame ?? .zero
+        let pointer = NSEvent.mouseLocation
         offset = CGPoint(x: pointer.x - frame.minX, y: pointer.y - frame.minY)
-        target = nil
-        let panel = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = true
-        panel.ignoresMouseEvents = true
-        panel.level = .popUpMenu
-        panel.contentView = NSHostingView(rootView: GeometryReader { geometry in
-            surface
-                .frame(width: frame.width, height: frame.height)
-                .scaleEffect(min(geometry.size.width / max(frame.width, 1), geometry.size.height / max(frame.height, 1)))
-                .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
-        })
-        self.panel = panel
-        panel.orderFrontRegardless()
+        inside = ownerFrame.contains(pointer)
+        opacity = 1
+        nativeComponents = nativeItem.imageComponents ?? []
+        if inside { nativeItem.imageComponentsProvider = { [] } }
     }
-    func move(to point: CGPoint) {
-        pointer = point
-        guard target == nil else { return }
-        panel?.setFrameOrigin(CGPoint(x: point.x - offset.x, y: point.y - offset.y))
-    }
-    func attract(to frame: CGRect) {
-        guard let panel else { return }
-        target = frame
-        var attracted = origin
-        attracted.origin = CGPoint(x: frame.midX - origin.width / 2, y: frame.midY - origin.height / 2)
-        animate(panel, frame: attracted, close: false)
-    }
-    func releaseTarget() {
-        target = nil
-        move(to: pointer)
+    func move(to point: CGPoint, session: NSDraggingSession) {
+        ownerFrame = owner?.frame ?? ownerFrame
+        frame.origin = CGPoint(x: point.x - offset.x, y: point.y - offset.y)
+        let nextInside = ownerFrame.contains(point)
+        guard nextInside != inside else { return }
+        inside = nextInside
+        let components = nativeComponents
+        session.enumerateDraggingItems(options: [], for: nil, classes: [NSPasteboardItem.self], searchOptions: [:]) { item, _, _ in
+            item.imageComponentsProvider = nextInside ? { [] } : { components }
+        }
     }
     func finish(cancelled: Bool) {
-        guard let panel else { return }
-        let destination: CGRect
-        if cancelled { destination = origin }
-        else if let target { destination = target }
-        else { destination = panel.frame }
-        self.panel = nil
-        target = nil
-        animate(panel, frame: destination, close: true)
+        let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        withAnimation(reduced ? nil : .easeInOut(duration: 0.22), completionCriteria: .removed) {
+            if cancelled { frame = origin }
+            opacity = 0
+        } completion: { [weak self] in
+            self?.surface = nil
+            self?.owner = nil
+        }
     }
-    private func animate(_ panel: NSPanel, frame: CGRect, close: Bool) {
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.24
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            panel.animator().setFrame(frame, display: true)
-            if close { panel.animator().alphaValue = 0 }
-        } completionHandler: {
-            if close { panel.orderOut(nil); panel.contentView = nil }
+}
+
+/// Renders the same card content above history, sharing native glass merging with the toolbar.
+struct CardDragOverlay: View {
+    private let drag = CardDragPresentation.shared
+    var body: some View {
+        if drag.inside, let surface = drag.surface {
+            surface
+                .frame(width: drag.frame.width, height: drag.frame.height)
+                .position(x: drag.frame.midX - drag.ownerFrame.minX,
+                          y: drag.ownerFrame.maxY - drag.frame.midY)
+                .opacity(drag.opacity)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
         }
     }
 }

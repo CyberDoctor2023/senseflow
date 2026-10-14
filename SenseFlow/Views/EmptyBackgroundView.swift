@@ -112,7 +112,7 @@ struct EmptyBackgroundView: View {
 
     @available(macOS 26.0, *)
     private var glassBody: some View {
-        GlassEffectContainer(spacing: glassSpacing) {
+        Group {
             HStack(spacing: elementSpacing) {
                 // 搜索胶囊：左边固定，右边伸缩
                 // 收起时覆盖圆球区域（一条完整的 bar）
@@ -240,8 +240,7 @@ struct EmptyBackgroundView: View {
                 }
                 .buttonStyle(.plain)
                 .compatibleGlassEffect(cornerRadius: config.buttonSize / 2, interactive: false)
-                .scaleEffect(targetedTool == tool.id ? 1.16 : hoveredTool == tool.id ? Constants.SelectionFeedback.scale : 1)
-                .offset(y: targetedTool == tool.id ? -3 : 0)
+                .scaleEffect(hoveredTool == tool.id ? Constants.SelectionFeedback.scale : 1)
                 .shadow(color: .black.opacity(targetedTool == tool.id ? 0.18 : 0), radius: 10, y: 4)
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: targetedTool)
                 .onHover { inside in
@@ -473,15 +472,13 @@ private struct NativeToolDropTarget: NSViewRepresentable {
         override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
             guard enabled, sender.draggingPasteboard.string(forType: .string) != nil else { return [] }
             onTargetChanged?(true)
-            if let window { CardDragPresentation.shared.attract(to: window.convertToScreen(convert(bounds, to: nil))) }
-            return .copy
+            return sender.draggingSource is CardPointerRegion.PointerView ? .generic : .copy
         }
         override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
-            enabled ? .copy : []
+            enabled ? (sender.draggingSource is CardPointerRegion.PointerView ? .generic : .copy) : []
         }
         override func draggingExited(_ sender: (any NSDraggingInfo)?) {
             onTargetChanged?(false)
-            CardDragPresentation.shared.releaseTarget()
         }
         override func prepareForDragOperation(_ sender: any NSDraggingInfo) -> Bool { enabled }
         override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
