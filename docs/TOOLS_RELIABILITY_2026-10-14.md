@@ -40,3 +40,13 @@
 - `Tests/ToolInteractionVerification.swift`、同目录 `verification.log`：隔离 pasteboard 的内部版本确认/外部复制、显式输入、竞争请求、错误反馈与失败不写回通过。
 - 首次验证程序缺少 Sparkle framework rpath，dyld 在进入验证前退出；补充验证程序链接路径后通过，没有为此修改生产逻辑。
 - 本机已备份并安装修复版，进程正常启动，真实历史面板已通过 AX 观察。设置入口自动化未完成（窗口失焦隐藏且截图不可用）；未声称鼠标使用入口或真实模型输出、物理快捷键端到端实测通过。
+
+## 快捷键基础验收补充
+- 修复 A 键码 0 与未设置状态混淆：只有键码和修饰键同时为 0 才未设置；修饰键统一使用 Carbon 位值。
+- 修改绑定失败后恢复旧工具与绑定，不以错误提示掩盖实际保存的新绑定。
+- 验证必须经过系统快捷键事件与生产回调；隔离测试不请求 AI、不读取真实剪贴板，也不向其他窗口粘贴。
+- KeyboardShortcuts 当前 API 查阅 Context7；keyUp 表示松开主键触发，不要求等待修饰键松开。官方参考：https://github.com/sindresorhus/KeyboardShortcuts 。Apple Doc MCP 无 Carbon technology，本轮不增加自定义 Carbon 注册路径。
+- `build-shortcuts.log` 构建通过；`verification-shortcuts.log` 的隔离真实 SQLite 验证通过：失败修改恢复旧数据库值与绑定、保存 Command-Control-A、清空后注销。
+- `Tests/GlobalShortcutVerification.swift` 使用生产 AppHotKeyCoordinator 注册 Command-Control-1/2/A，接收系统回调后更新窗口并写计数。无模型、真实剪贴板或粘贴副作用。
+- 自动化 pressKey（普通与 200ms 持续按键）没有产生计数，不能当作触发成功，也不能据此判定物理键盘失败。已请求用户在当前验证窗口真实按键；物理全局触发验收仍待此结果。
+- 主应用为避免占用同一组合暂时退出；基础快捷键修复尚未替换到 /Applications，等待系统事件验证后安装。

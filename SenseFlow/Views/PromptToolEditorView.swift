@@ -201,7 +201,7 @@ struct ShortcutRecorderField: View {
             HStack {
                 KeyboardShortcuts.Recorder(for: HotKeyNames.toolEditorRecorder, onChange: handleRecorderChange)
 
-                if keyCode != 0 {
+                if keyCode != 0 || modifiers != 0 {
                     Button {
                         keyCode = 0
                         modifiers = 0
@@ -294,7 +294,7 @@ struct ShortcutRecorderField: View {
 
     private func syncRecorderWithBinding() {
         let shortcut: KeyboardShortcuts.Shortcut?
-        if keyCode == 0 {
+        if keyCode == 0 && modifiers == 0 {
             shortcut = nil
         } else {
             shortcut = HotKeyShortcutCodec.toShortcut(keyCode: keyCode, modifiers: modifiers)

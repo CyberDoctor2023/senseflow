@@ -201,13 +201,13 @@ class HotKeyManager {
     ///   - callback: 触发时的回调
     /// - Returns: 是否注册成功
     func registerToolHotKey(toolID: UUID, keyCode: UInt32, modifiers: UInt32, callback: @escaping () -> Void) -> Bool {
-        unregisterToolHotKey(toolID: toolID)
-
         let shortcut = HotKeyShortcutCodec.toShortcut(keyCode: keyCode, modifiers: modifiers)
         guard !isShortcutUsedInternally(shortcut, excludingToolID: toolID) else {
             print("⚠️ Tool 快捷键已被占用（应用内冲突）")
             return false
         }
+
+        unregisterToolHotKey(toolID: toolID)
 
         let shortcutName = HotKeyNames.tool(toolID)
         KeyboardShortcuts.setShortcut(shortcut, for: shortcutName)

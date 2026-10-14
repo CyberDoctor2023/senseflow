@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import Carbon
 @testable import SenseFlow
 
 @main struct ToolInteractionVerification {
@@ -46,7 +47,32 @@ import AppKit
         let afterFailure = await writer.values
         try require(afterFailure == writes, "failed transport preserves clipboard output")
         try require(notifications.errors.count == 2, "busy and failed requests both report an error")
-        print("PASS: internal clipboard revisions, external capture, explicit tool input, concurrency and failure feedback")
+        let directory = URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let repository = SQLitePromptToolRepository(databaseManager: DatabaseManager(databaseURL: directory.appendingPathComponent("tools.sqlite")))
+        let bindings = RejectingHotKeys()
+        let coordinator = PromptToolCoordinator(repository: repository, executeToolUseCase: runner, hotKeyCoordinator: bindings)
+        var original = PromptTool(name: "rollback", prompt: "retain", shortcutKeyCode: 18,
+                                  shortcutModifiers: UInt32(cmdKey | controlKey))
+        try await coordinator.createTool(original)
+        var conflicting = original
+        conflicting.shortcutKeyCode = 19
+        do {
+            try await coordinator.updateTool(conflicting)
+            throw Failure("conflicting shortcut should not save")
+        } catch RejectingHotKeys.Failure.conflict {}
+        let restored = try await repository.find(by: original.toolID)
+        try require(restored?.shortcutKeyCode == 18 && bindings.registered == 18,
+                    "failed shortcut update restores persisted value and old binding")
+        original.shortcutKeyCode = 0
+        try await coordinator.updateTool(original)
+        let savedA = try await repository.find(by: original.toolID)
+        try require(savedA?.hasShortcut == true && savedA?.keyCombo?.modifiers.contains(.command) == true && bindings.registered == 0,
+                    "Command-Control-A retains keycode zero through saving and registration")
+        original.shortcutModifiers = 0
+        try await coordinator.updateTool(original)
+        try require(bindings.registered == nil, "clearing a shortcut unregisters it")
+        print("PASS: clipboard revisions, explicit input, concurrent requests, failure feedback, binding rollback and A-key registration")
     }
     static func require(_ condition: Bool, _ message: String) throws {
         if !condition { throw Failure(message) }
@@ -89,4 +115,15 @@ private actor ControlledTransport: AITransport {
         continuation = nil
     }
     func setFailure() { fails = true }
+}
+
+private final class RejectingHotKeys: PromptToolHotKeyHandling, @unchecked Sendable {
+    enum Failure: Error { case conflict }
+    var registered: UInt16?
+    func registerToolHotKey(for tool: PromptTool, handler: @escaping @Sendable () -> Void) throws {
+        if tool.shortcutKeyCode == 19 { throw Failure.conflict }
+        registered = tool.hasShortcut ? tool.shortcutKeyCode : nil
+    }
+    func unregisterToolHotKey(for toolID: ToolID) { registered = nil }
+    func unregisterAllToolHotKeys() { registered = nil }
 }
