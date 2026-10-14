@@ -162,6 +162,7 @@ struct CardPointerRegion: NSViewRepresentable {
         var dragSurface: AnyView?
         private var dragTask: Task<Void, Never>?
         private var dragSessionActive = false
+        private var dragCancelled = false
         private var pressOrigin: NSPoint?
         var onEnter: ((CGRect) -> Void)?
         var onLeave: (() -> Void)?
@@ -178,6 +179,10 @@ struct CardPointerRegion: NSViewRepresentable {
             guard window != nil else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown, .leftMouseDown, .rightMouseUp, .leftMouseUp, .rightMouseDragged, .leftMouseDragged, .scrollWheel]) { [weak self] event in
                 guard let self, self.isEnabled else { return event }
+                if event.type == .keyDown {
+                    if event.keyCode == 53, self.dragSessionActive { self.dragCancelled = true }
+                    return event
+                }
                 if event.type == .scrollWheel { self.cancelHold(); return event }
                 if event.type == .leftMouseUp || event.type == .rightMouseUp {
                     guard self.heldButton == event.buttonNumber else { return event }
@@ -261,6 +266,7 @@ struct CardPointerRegion: NSViewRepresentable {
                     if let surface = self.dragSurface {
                         CardDragPresentation.shared.begin(surface: surface, frame: sourceFrame, window: self.window, nativeItem: item)
                     }
+                    self.dragCancelled = false
                     self.dragSessionActive = true
                     self.onDragStateChanged?(true)
                     let session = self.beginDraggingSession(with: [item], event: event, source: self)
@@ -276,7 +282,11 @@ struct CardPointerRegion: NSViewRepresentable {
             session.animatesToStartingPositionsOnCancelOrFail = !CardDragPresentation.shared.inside
             dragSessionActive = false
             cancelHold()
-            CardDragPresentation.shared.finish(cancelled: operation.isEmpty) { [weak self] in
+            let delivered = operation.isEmpty && !dragCancelled && NSEvent.pressedMouseButtons & 1 == 0
+                && CardDragPresentation.shared.deliverOnRelease(
+                at: screenPoint, text: session.draggingPasteboard.string(forType: .string))
+            let returnFrame = window.map { $0.convertToScreen(convert(bounds, to: nil)) }
+            CardDragPresentation.shared.finish(cancelled: operation.isEmpty && !delivered, returnFrame: returnFrame) { [weak self] in
                 self?.onDragStateChanged?(false)
             }
         }
@@ -297,6 +307,15 @@ struct CardPointerRegion: NSViewRepresentable {
     }
 }
 
+/// Native tool surfaces expose geometry and one execution boundary to the drag coordinator.
+@MainActor protocol CardToolDropSurface: AnyObject {
+    var toolScreenFrame: CGRect? { get }
+    var toolSymbol: String { get }
+    var toolNumber: Int { get }
+    func setCardTargeted(_ targeted: Bool)
+    func acceptCardText(_ text: String) -> Bool
+}
+
 /// Presents the dragged card in the same glass container as its tool targets.
 @MainActor @Observable final class CardDragPresentation {
     static let shared = CardDragPresentation()
@@ -309,12 +328,16 @@ struct CardPointerRegion: NSViewRepresentable {
     var targetSymbol = "wand.and.stars"
     var targetNumber = 1
     @ObservationIgnored private weak var owner: NSWindow?
+    @ObservationIgnored private let tools = NSHashTable<NSView>.weakObjects()
+    @ObservationIgnored private weak var selectedTool: (any CardToolDropSurface)?
+    @ObservationIgnored private var delivered = false
     @ObservationIgnored private var origin = CGRect.zero
     @ObservationIgnored private var offset = CGPoint.zero
     @ObservationIgnored private var nativeComponents: [NSDraggingImageComponent] = []
 
     func begin(surface: AnyView, frame: CGRect, window: NSWindow?, nativeItem: NSDraggingItem) {
-        targetFrame = nil
+        clearTarget()
+        delivered = false
         self.surface = surface
         self.frame = frame
         origin = frame
@@ -330,6 +353,7 @@ struct CardPointerRegion: NSViewRepresentable {
     func move(to point: CGPoint, session: NSDraggingSession) {
         ownerFrame = owner?.frame ?? ownerFrame
         frame.origin = CGPoint(x: point.x - offset.x, y: point.y - offset.y)
+        selectTool(at: point)
         let nextInside = canPresentWholeCard
         guard nextInside != inside else { return }
         inside = nextInside
@@ -338,16 +362,65 @@ struct CardPointerRegion: NSViewRepresentable {
             item.imageComponentsProvider = nextInside ? { [] } : { components }
         }
     }
+    func registerTool(_ view: NSView) { tools.add(view) }
+    func unregisterTool(_ view: NSView) {
+        tools.remove(view)
+        if let selected = selectedTool, (selected as AnyObject) === view { clearTarget() }
+    }
+
+    private func clearTarget() {
+        selectedTool?.setCardTargeted(false)
+        selectedTool = nil
+        targetFrame = nil
+    }
+
+    private func selectTool(at pointer: CGPoint) {
+        guard surface != nil, ownerFrame.contains(pointer), !delivered else { clearTarget(); return }
+        let candidates = tools.allObjects.compactMap { view -> (any CardToolDropSurface, CGRect, CGFloat)? in
+            guard view.window === owner, let tool = view as? any CardToolDropSurface,
+                  let rect = tool.toolScreenFrame else { return nil }
+            // The card's top edge, rather than its grip point, approaches one circular target.
+            let vertical = abs(frame.maxY - rect.minY)
+            let horizontal = abs(frame.midX - rect.midX)
+            guard vertical <= 30, rect.midX >= frame.minX + 20, rect.midX <= frame.maxX - 20,
+                  horizontal <= rect.width / 2 + 36 else { return nil }
+            return (tool, rect, horizontal + vertical * 0.25)
+        }
+        guard let best = candidates.min(by: { $0.2 < $1.2 }) else { clearTarget(); return }
+        if selectedTool !== best.0 {
+            clearTarget()
+            selectedTool = best.0
+            best.0.setCardTargeted(true)
+        }
+        targetFrame = best.1
+        targetSymbol = best.0.toolSymbol
+        targetNumber = best.0.toolNumber
+    }
+
+    /// Both native destination and source-release callbacks deliver at most once.
+    func deliver(_ text: String, to tool: any CardToolDropSurface) -> Bool {
+        guard !delivered, selectedTool === tool else { return false }
+        guard tool.acceptCardText(text) else { return false }
+        delivered = true
+        return true
+    }
+
+    func deliverOnRelease(at point: CGPoint, text: String?) -> Bool {
+        selectTool(at: point)
+        guard let text, let selectedTool else { return false }
+        return deliver(text, to: selectedTool)
+    }
+
     /// Window-local glass must never replace a native image that extends beyond the window.
     private var canPresentWholeCard: Bool {
         ownerFrame.contains(frame.insetBy(dx: -12, dy: -12))
     }
 
-    func finish(cancelled: Bool, completion: @escaping () -> Void) {
-        targetFrame = nil
+    func finish(cancelled: Bool, returnFrame: CGRect? = nil, completion: @escaping () -> Void) {
+        clearTarget()
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         withAnimation(reduced ? nil : .easeInOut(duration: 0.22), completionCriteria: .removed) {
-            if cancelled { frame = origin }
+            if cancelled { frame = returnFrame ?? origin }
             if !cancelled { opacity = 0 }
         } completion: { [weak self] in
             self?.surface = nil

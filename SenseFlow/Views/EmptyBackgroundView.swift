@@ -455,6 +455,7 @@ private struct NativeToolDropTarget: NSViewRepresentable {
         let view = DestinationView()
         view.registerForDraggedTypes([.string])
         updateNSView(view, context: context)
+        CardDragPresentation.shared.registerTool(view)
         return view
     }
     func updateNSView(_ view: DestinationView, context: Context) {
@@ -467,7 +468,11 @@ private struct NativeToolDropTarget: NSViewRepresentable {
         view.onDrop = onDrop
     }
 
-    final class DestinationView: NSView, HistoryToolSurface {
+    static func dismantleNSView(_ view: DestinationView, coordinator: ()) {
+        CardDragPresentation.shared.unregisterTool(view)
+    }
+
+    final class DestinationView: NSView, HistoryToolSurface, CardToolDropSurface {
         var symbol = "wand.and.stars"
         var number = 1
         var enabled = true
@@ -476,35 +481,40 @@ private struct NativeToolDropTarget: NSViewRepresentable {
         var onActivate: (() -> Void)?
         var onDrop: ((String) -> Bool)?
 
+        var toolScreenFrame: CGRect? {
+            guard enabled, !isHidden, let window, window.isVisible else { return nil }
+            return window.convertToScreen(convert(bounds, to: nil))
+        }
+        var toolSymbol: String { symbol }
+        var toolNumber: Int { number }
+        func setCardTargeted(_ targeted: Bool) { onTargetChanged?(targeted) }
+        func acceptCardText(_ text: String) -> Bool { enabled && onDrop?(text) == true }
+
         override func mouseUp(with event: NSEvent) { if enabled { onActivate?() } }
         override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
             guard enabled, sender.draggingPasteboard.string(forType: .string) != nil else { return [] }
-            if let window {
-                CardDragPresentation.shared.targetFrame = window.convertToScreen(convert(bounds, to: nil))
-                CardDragPresentation.shared.targetSymbol = symbol
-                CardDragPresentation.shared.targetNumber = number
-            }
-            onTargetChanged?(true)
+            if !(sender.draggingSource is CardPointerRegion.PointerView) { onTargetChanged?(true) }
             return sender.draggingSource is CardPointerRegion.PointerView ? .generic : .copy
         }
         override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
             enabled ? (sender.draggingSource is CardPointerRegion.PointerView ? .generic : .copy) : []
         }
         override func draggingExited(_ sender: (any NSDraggingInfo)?) {
-            CardDragPresentation.shared.targetFrame = nil
+            if sender?.draggingSource is CardPointerRegion.PointerView { return }
             onTargetChanged?(false)
         }
         override func prepareForDragOperation(_ sender: any NSDraggingInfo) -> Bool { enabled }
         override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
-            guard enabled, let text = sender.draggingPasteboard.string(forType: .string),
-                  onDrop?(text) == true else { return false }
+            guard enabled, let text = sender.draggingPasteboard.string(forType: .string) else { return false }
+            let accepted = sender.draggingSource is CardPointerRegion.PointerView
+                ? CardDragPresentation.shared.deliver(text, to: self) : acceptCardText(text)
+            guard accepted else { return false }
             // The live card surface owns the visible arrival; native dragging carries only the data.
             sender.animatesToDestination = false
             return true
         }
         override func draggingEnded(_ sender: any NSDraggingInfo) {
-            CardDragPresentation.shared.targetFrame = nil
-            onTargetChanged?(false)
+            if !(sender.draggingSource is CardPointerRegion.PointerView) { onTargetChanged?(false) }
         }
     }
 }
