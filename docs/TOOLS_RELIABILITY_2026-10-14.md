@@ -48,5 +48,5 @@
 - KeyboardShortcuts 当前 API 查阅 Context7；keyUp 表示松开主键触发，不要求等待修饰键松开。官方参考：https://github.com/sindresorhus/KeyboardShortcuts 。Apple Doc MCP 无 Carbon technology，本轮不增加自定义 Carbon 注册路径。
 - `build-shortcuts.log` 构建通过；`verification-shortcuts.log` 的隔离真实 SQLite 验证通过：失败修改恢复旧数据库值与绑定、保存 Command-Control-A、清空后注销。
 - `Tests/GlobalShortcutVerification.swift` 使用生产 AppHotKeyCoordinator 注册 Command-Control-1/2/A，接收系统回调后更新窗口并写计数。无模型、真实剪贴板或粘贴副作用。
-- 自动化 pressKey（普通与 200ms 持续按键）没有产生计数，不能当作触发成功，也不能据此判定物理键盘失败。已请求用户在当前验证窗口真实按键；物理全局触发验收仍待此结果。
-- 主应用为避免占用同一组合暂时退出；基础快捷键修复尚未替换到 /Applications，等待系统事件验证后安装。
+- 自动化 pressKey（普通与 200ms 持续按键）没有产生计数，不能当作触发成功，也不能据此判定物理键盘失败。用户物理按键后 Command-Control-1/2 各计数 1，A 计数 0；用户报告 A 被微信占用。证据 global-shortcut-events.txt。仅验证系统事件到生产回调，不等于真实 AI 调用通过。
+- 验证程序已退出；基础快捷键修复已备份并安装到 /Applications/SenseFlow.app，主程序重新启动。

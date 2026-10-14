@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// 顶部搜索栏视图
 ///
@@ -26,6 +27,11 @@ struct EmptyBackgroundView: View {
     @ObservedObject var viewModel: ClipboardListViewModel
     @FocusState private var isSearchFocused: Bool
     @Binding var isExpanded: Bool  // 由父视图控制
+    @State private var tools: [PromptTool] = []
+    @State private var hoveredTool: UUID?
+    @State private var targetedTool: UUID?
+    @State private var runningTool: UUID?
+    @State private var toolError: String?
     @State private var hoveredHint: String?
     @Namespace private var glassNamespace
     @Environment(\.clipboardOnboarding) private var onboarding
@@ -84,6 +90,13 @@ struct EmptyBackgroundView: View {
                 staticBody
             }
         }
+        .task { await reloadTools() }
+        .onReceive(NotificationCenter.default.publisher(for: .windowWillShow)) { _ in
+            Task { await reloadTools() }
+        }
+        .alert("工具未完成", isPresented: Binding(get: { toolError != nil }, set: { if !$0 { toolError = nil } })) {
+            Button("好", role: .cancel) { toolError = nil }
+        } message: { Text(toolError ?? "") }
         .onChange(of: hints.map(\.type), initial: true) { _, visible in
             Task { await viewModel.clearHiddenFilter(visible) }
         }
@@ -129,6 +142,8 @@ struct EmptyBackgroundView: View {
 
                 Spacer()
 
+                toolTargets
+
                 pinButton
                     .glassEffect(.regular.interactive(), in: .circle)
                     .glassEffectID("pin", in: glassNamespace)
@@ -163,10 +178,100 @@ struct EmptyBackgroundView: View {
 
             Spacer()
 
+            toolTargets
+
             pinButton
                 .background(config.material, in: Circle())
         }
         .frame(maxWidth: .infinity)  // 只约束宽度，让高度自然确定
+    }
+
+    private var toolTargets: some View {
+        HStack(spacing: elementSpacing) {
+            if !tools.isEmpty {
+                Text("工具").font(.pingFang(size: 11)).foregroundStyle(.secondary)
+            }
+            ForEach(Array(tools.prefix(9).enumerated()), id: \.element.id) { index, tool in
+                Button {
+                    runTool(tool, input: nil)
+                } label: {
+                    Group {
+                        if runningTool == tool.id { ProgressView().controlSize(.small) }
+                        else { Image(systemName: toolSymbol(tool)).overlay(alignment: .bottomTrailing) {
+                            Text("\(index + 1)").font(.pingFang(size: 8)).offset(x: 8, y: 7)
+                        } }
+                    }
+                    .font(.pingFang(size: config.iconSize))
+                    .frame(width: config.buttonSize, height: config.buttonSize)
+                }
+                .buttonStyle(.plain)
+                .compatibleGlassEffect(cornerRadius: config.buttonSize / 2, interactive: false)
+                .scaleEffect(targetedTool == tool.id ? 1.16 : hoveredTool == tool.id ? Constants.SelectionFeedback.scale : 1)
+                .offset(y: targetedTool == tool.id ? -3 : 0)
+                .shadow(color: .black.opacity(targetedTool == tool.id ? 0.18 : 0), radius: 10, y: 4)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: targetedTool)
+                .onHover { inside in
+                    if inside { hoveredTool = tool.id }
+                    else if hoveredTool == tool.id { hoveredTool = nil }
+                }
+                .animation(reduceMotion ? nil : .easeInOut(duration: Constants.SelectionFeedback.duration), value: hoveredTool)
+                .disabled(runningTool != nil)
+                .help("\(tool.name) · 拖入文字卡片 · ⌘⇧\(index + 1)")
+                .accessibilityLabel(tool.name)
+                .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: [.command, .shift])
+                .onDrop(of: [UTType.utf8PlainText.identifier], isTargeted: Binding(
+                    get: { targetedTool == tool.id },
+                    set: { targeted in
+                        if targeted { targetedTool = tool.id }
+                        else if targetedTool == tool.id { targetedTool = nil }
+                    }
+                )) { providers in
+                    guard runningTool == nil, let provider = providers.first else { return false }
+                    // Reserve the request before asynchronously decoding the drag-local payload.
+                    runningTool = tool.id
+                    targetedTool = nil
+                    provider.loadDataRepresentation(forTypeIdentifier: UTType.utf8PlainText.identifier) { data, error in
+                        Task { @MainActor in
+                            guard let data, let text = String(data: data, encoding: .utf8) else {
+                                runningTool = nil
+                                toolError = error?.localizedDescription ?? "无法读取这张卡片的文字"
+                                return
+                            }
+                            await executeTool(tool, input: text)
+                        }
+                    }
+                    return true
+                }
+            }
+        }
+    }
+
+    private func toolSymbol(_ tool: PromptTool) -> String {
+        switch tool.name {
+        case "Markdown 格式化": return "textformat"
+        case "表格生成": return "tablecells"
+        case "邮件规范化": return "envelope"
+        case "提取标题": return "textformat.size"
+        default: return "wand.and.stars"
+        }
+    }
+
+    @MainActor private func reloadTools() async {
+        do { tools = try await AppDependencies.shared.promptToolCoordinator.loadTools().filter { !$0.isSmart } }
+        catch { toolError = error.localizedDescription }
+    }
+
+    @MainActor private func runTool(_ tool: PromptTool, input: String?) {
+        guard runningTool == nil else { return }
+        runningTool = tool.id
+        Task { await executeTool(tool, input: input) }
+    }
+
+    @MainActor private func executeTool(_ tool: PromptTool, input: String?) async {
+        defer { runningTool = nil }
+        do {
+            _ = try await AppDependencies.shared.promptToolCoordinator.executeTool(id: tool.toolID, input: input, autoPaste: false)
+        } catch { toolError = error.localizedDescription }
     }
 
     // MARK: - Search Capsule (内容部分，不含 frame/glass)
