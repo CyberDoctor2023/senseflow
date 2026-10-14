@@ -21,3 +21,8 @@
 圆球只呈现同一工具仓库中的工具，不能有单独的创建/删除配置。订阅已有 promptToolsDidUpdate 通知，在主线程触发刷新；刷新任务取消旧请求，忽略过期返回。新增、删除、修改与恢复默认工具均实时反映。执行仍按 ID 从仓库读取当前工具，UI 不持有提示词执行逻辑。
 
 同步修复验证：build-tool-sync.log BUILD SUCCEEDED；diff --check 通过。已备份旧应用、安装并启动同步修复版；设置内删除后圆球实时消失的 UI 实测尚未完成。
+
+## 卡片吸附修正
+工具组移入筛选与 pin 之间的中间区域，两侧弹性留白；不固定在右上角。原生 AppKit 拖放目标负责整张卡片拖拽图像的缩放与目标吸附，包含卡片背景、文字和 footer；不是只拖文字。使用 updateDraggingItemsForDrag 和 animatesToDestination，避免每次指针更新重算图片。退出目标恢复卡片尺寸，取消由系统回原位。UI 只发送文字载荷给现有工具执行入口。
+
+卡片吸附修正构建：build-card-tool-drag.log BUILD SUCCEEDED；diff --check 通过。已备份、安装并启动。Apple Doc MCP 确认 updateDraggingItemsForDrag、enumerateDraggingItems、animatesToDestination；依 SDK NSDragging.h 确认签名。此前 onDrop 的圆球反馈路径已替换，保留单一原生拖放目标。实际卡片吸附视觉与窗口内拖放验收仍未完成；不以构建通过认定体验通过。

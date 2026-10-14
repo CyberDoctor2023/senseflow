@@ -6,7 +6,7 @@
 //
 
 import SwiftUI
-import UniformTypeIdentifiers
+import AppKit
 
 /// 顶部搜索栏视图
 ///
@@ -148,6 +148,8 @@ struct EmptyBackgroundView: View {
 
                 toolTargets
 
+                Spacer()
+
                 pinButton
                     .glassEffect(.regular.interactive(), in: .circle)
                     .glassEffectID("pin", in: glassNamespace)
@@ -183,6 +185,8 @@ struct EmptyBackgroundView: View {
             Spacer()
 
             toolTargets
+
+            Spacer()
 
             pinButton
                 .background(config.material, in: Circle())
@@ -223,28 +227,18 @@ struct EmptyBackgroundView: View {
                 .help("\(tool.name) · 拖入文字卡片 · ⌘⇧\(index + 1)")
                 .accessibilityLabel(tool.name)
                 .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: [.command, .shift])
-                .onDrop(of: [UTType.utf8PlainText.identifier], isTargeted: Binding(
-                    get: { targetedTool == tool.id },
-                    set: { targeted in
-                        if targeted { targetedTool = tool.id }
-                        else if targetedTool == tool.id { targetedTool = nil }
-                    }
-                )) { providers in
-                    guard runningTool == nil, let provider = providers.first else { return false }
-                    // Reserve the request before asynchronously decoding the drag-local payload.
-                    runningTool = tool.id
-                    targetedTool = nil
-                    provider.loadDataRepresentation(forTypeIdentifier: UTType.utf8PlainText.identifier) { data, error in
-                        Task { @MainActor in
-                            guard let data, let text = String(data: data, encoding: .utf8) else {
-                                runningTool = nil
-                                toolError = error?.localizedDescription ?? "无法读取这张卡片的文字"
-                                return
-                            }
-                            await executeTool(tool, input: text)
-                        }
-                    }
-                    return true
+                .overlay {
+                    NativeToolDropTarget(enabled: runningTool == nil, reduceMotion: reduceMotion,
+                        onTargetChanged: { targeted in
+                            if targeted { targetedTool = tool.id }
+                            else if targetedTool == tool.id { targetedTool = nil }
+                        }, onActivate: { runTool(tool, input: nil) }, onDrop: { text in
+                            guard runningTool == nil else { return false }
+                            runningTool = tool.id
+                            targetedTool = nil
+                            Task { await executeTool(tool, input: text) }
+                            return true
+                        })
                 }
             }
         }
@@ -412,5 +406,85 @@ private struct CategorySurfaceFeedback: ViewModifier {
                 }
             }
             .onDisappear { enlarged = false }
+    }
+}
+
+/// Adapts the native whole-card drag image to a tool destination without changing its payload.
+private struct NativeToolDropTarget: NSViewRepresentable {
+    let enabled: Bool
+    let reduceMotion: Bool
+    let onTargetChanged: (Bool) -> Void
+    let onActivate: () -> Void
+    let onDrop: (String) -> Bool
+
+    func makeNSView(context: Context) -> DestinationView {
+        let view = DestinationView()
+        view.registerForDraggedTypes([.string])
+        updateNSView(view, context: context)
+        return view
+    }
+    func updateNSView(_ view: DestinationView, context: Context) {
+        view.enabled = enabled
+        view.reduceMotion = reduceMotion
+        view.onTargetChanged = onTargetChanged
+        view.onActivate = onActivate
+        view.onDrop = onDrop
+    }
+
+    final class DestinationView: NSView {
+        var enabled = true
+        var reduceMotion = false
+        var onTargetChanged: ((Bool) -> Void)?
+        var onActivate: (() -> Void)?
+        var onDrop: ((String) -> Bool)?
+        private var originalSize: NSSize?
+
+        override func mouseUp(with event: NSEvent) { if enabled { onActivate?() } }
+        override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+            guard enabled, sender.draggingPasteboard.string(forType: .string) != nil else { return [] }
+            onTargetChanged?(true)
+            return .copy
+        }
+        override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+            enabled ? .copy : []
+        }
+        override func updateDraggingItemsForDrag(_ sender: (any NSDraggingInfo)?) {
+            guard enabled, !reduceMotion, let sender else { return }
+            sender.enumerateDraggingItems(options: [], for: self, classes: [NSPasteboardItem.self], searchOptions: [:]) { item, _, _ in
+                if self.originalSize == nil { self.originalSize = item.draggingFrame.size }
+                guard let size = self.originalSize else { return }
+                let scaled = NSSize(width: size.width * 0.78, height: size.height * 0.78)
+                item.draggingFrame = NSRect(x: self.bounds.midX - scaled.width / 2,
+                    y: self.bounds.midY - scaled.height / 2, width: scaled.width, height: scaled.height)
+            }
+        }
+        override func draggingExited(_ sender: (any NSDraggingInfo)?) {
+            onTargetChanged?(false)
+            if let sender, let size = originalSize {
+                let point = convert(sender.draggingLocation, from: nil)
+                sender.enumerateDraggingItems(options: [], for: self, classes: [NSPasteboardItem.self], searchOptions: [:]) { item, _, _ in
+                    item.draggingFrame = NSRect(x: point.x - size.width / 2, y: point.y - size.height / 2,
+                                               width: size.width, height: size.height)
+                }
+            }
+            originalSize = nil
+        }
+        override func prepareForDragOperation(_ sender: any NSDraggingInfo) -> Bool { enabled }
+        override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+            guard enabled, let text = sender.draggingPasteboard.string(forType: .string),
+                  onDrop?(text) == true else { return false }
+            sender.animatesToDestination = !reduceMotion
+            if !reduceMotion {
+                sender.enumerateDraggingItems(options: [], for: self, classes: [NSPasteboardItem.self], searchOptions: [:]) { item, _, _ in
+                    // The system eases the complete card image into the tool circle on release.
+                    item.draggingFrame = self.bounds.insetBy(dx: 4, dy: 4)
+                }
+            }
+            return true
+        }
+        override func draggingEnded(_ sender: any NSDraggingInfo) {
+            originalSize = nil
+            onTargetChanged?(false)
+        }
     }
 }
