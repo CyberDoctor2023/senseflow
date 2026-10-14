@@ -88,10 +88,9 @@ struct UnifiedPanelView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            Group {
+            ZStack(alignment: .bottom) {
                 HistoryBackdrop(height: mainContainerConfig.windowHeight(cardConfig: cardConfig),
                                 cornerRadius: mainContainerConfig.cornerRadius)
-                    .compatibleGlassGroup(spacing: 0)
                     .onboardingTarget(.history, radius: mainContainerConfig.cornerRadius)
                 // Search and background keep their original baseline while a card grows above them.
                 VStack(spacing: 0) {
@@ -106,6 +105,7 @@ struct UnifiedPanelView: View {
                 .frame(height: topConfig.windowHeight + topConfig.gapFromMainWindow + mainContainerConfig.windowHeight(cardConfig: cardConfig))
 
             }
+            .compatibleGlassGroup(spacing: 12)
 
             GeometryReader { geometry in
                 ZStack {

@@ -306,6 +306,8 @@ struct CardPointerRegion: NSViewRepresentable {
     private(set) var inside = false
     private(set) var opacity: Double = 1
     var targetFrame: CGRect?
+    var targetSymbol = "wand.and.stars"
+    var targetNumber = 1
     @ObservationIgnored private weak var owner: NSWindow?
     @ObservationIgnored private var origin = CGRect.zero
     @ObservationIgnored private var offset = CGPoint.zero
@@ -373,16 +375,41 @@ struct CardDragOverlay: View {
     }
 
     var body: some View {
-        if drag.inside, let surface = drag.surface {
-            identifiedSurface(surface)
-                .frame(width: drag.frame.width, height: drag.frame.height)
-                .position(x: drag.frame.midX - drag.ownerFrame.minX,
-                          y: drag.ownerFrame.maxY - drag.frame.midY)
-                .opacity(drag.opacity)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+        ZStack(alignment: .topLeading) {
+            if drag.inside, let surface = drag.surface {
+                identifiedSurface(surface)
+                    .frame(width: drag.frame.width, height: drag.frame.height)
+                    .position(x: drag.frame.midX - drag.ownerFrame.minX,
+                              y: drag.ownerFrame.maxY - drag.frame.midY)
+                    .opacity(drag.opacity)
+                if let target = drag.targetFrame {
+                    targetSurface
+                        .frame(width: target.width, height: target.height)
+                        .position(x: target.midX - drag.ownerFrame.minX,
+                                  y: drag.ownerFrame.maxY - target.midY)
+                }
+            }
+        }
+        .compatibleGlassGroup(spacing: 26)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder private var targetSurface: some View {
+        if #available(macOS 26.0, *) {
+            Image(systemName: drag.targetSymbol)
+                .font(.pingFang(size: SearchBarConfig.default.iconSize))
+                .overlay(alignment: .bottomTrailing) {
+                    Text("\(drag.targetNumber)").font(.pingFang(size: 8)).offset(x: 8, y: 7)
+                }
+                .frame(width: SearchBarConfig.default.buttonSize, height: SearchBarConfig.default.buttonSize)
+                .foregroundStyle(.primary)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .glassEffectID("selected-tool", in: namespace)
+                .scaleEffect(1.16)
         }
     }
+
 }
 
 /// A small top-edge lobe points toward the single native drop destination.

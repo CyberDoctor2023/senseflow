@@ -237,8 +237,7 @@ struct EmptyBackgroundView: View {
                 }
                 .buttonStyle(.plain)
                 .modifier(ToolGlassSurface(id: tool.id, namespace: glassNamespace,
-                                           active: showsTools, selected: targetedTool == tool.id,
-                                           restingOffset: toolRestingOffset))
+                                           active: showsTools, selected: targetedTool == tool.id))
                 .scaleEffect(targetedTool == tool.id ? 1.16 : (hoveredTool == tool.id ? Constants.SelectionFeedback.scale : 1))
                 .overlay {
                     Circle().stroke(.primary.opacity(targetedTool == tool.id ? 0.28 : 0), lineWidth: 1.5)
@@ -256,6 +255,7 @@ struct EmptyBackgroundView: View {
                 .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: [.command, .shift])
                 .overlay {
                     NativeToolDropTarget(enabled: runningTool == nil, reduceMotion: reduceMotion,
+                        symbol: toolSymbol(tool), number: index + 1,
                         onTargetChanged: { targeted in
                             if targeted { targetedTool = tool.id }
                             else if targetedTool == tool.id { targetedTool = nil }
@@ -445,6 +445,8 @@ private struct CategorySurfaceFeedback: ViewModifier {
 private struct NativeToolDropTarget: NSViewRepresentable {
     let enabled: Bool
     let reduceMotion: Bool
+    let symbol: String
+    let number: Int
     let onTargetChanged: (Bool) -> Void
     let onActivate: () -> Void
     let onDrop: (String) -> Bool
@@ -456,6 +458,8 @@ private struct NativeToolDropTarget: NSViewRepresentable {
         return view
     }
     func updateNSView(_ view: DestinationView, context: Context) {
+        view.symbol = symbol
+        view.number = number
         view.enabled = enabled
         view.reduceMotion = reduceMotion
         view.onTargetChanged = onTargetChanged
@@ -464,6 +468,8 @@ private struct NativeToolDropTarget: NSViewRepresentable {
     }
 
     final class DestinationView: NSView, HistoryToolSurface {
+        var symbol = "wand.and.stars"
+        var number = 1
         var enabled = true
         var reduceMotion = false
         var onTargetChanged: ((Bool) -> Void)?
@@ -475,6 +481,8 @@ private struct NativeToolDropTarget: NSViewRepresentable {
             guard enabled, sender.draggingPasteboard.string(forType: .string) != nil else { return [] }
             if let window {
                 CardDragPresentation.shared.targetFrame = window.convertToScreen(convert(bounds, to: nil))
+                CardDragPresentation.shared.targetSymbol = symbol
+                CardDragPresentation.shared.targetNumber = number
             }
             onTargetChanged?(true)
             return sender.draggingSource is CardPointerRegion.PointerView ? .generic : .copy
@@ -507,12 +515,14 @@ private struct ToolGlassSurface: ViewModifier {
     let namespace: Namespace.ID
     let active: Bool
     let selected: Bool
-    let restingOffset: CGFloat
+
+    private var toolsAreDragging: Bool { CardDragPresentation.shared.surface != nil }
 
     @ViewBuilder func body(content: Content) -> some View {
         if #available(macOS 26.0, *) {
             if active {
-                if selected || CardDragPresentation.shared.surface == nil { surface(content) }
+                if selected && CardDragPresentation.shared.inside { content.opacity(0) }
+                else if !toolsAreDragging { surface(content) }
                 else { GlassEffectContainer(spacing: 0) { surface(content) } }
             }
         } else {
