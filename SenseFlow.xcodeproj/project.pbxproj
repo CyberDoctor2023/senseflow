@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AB1400010000000000000001 = {isa = PBXBuildFile; fileRef = AB1400010000000000000002; };
+		AB1400010000000000000005 = {isa = PBXBuildFile; productRef = AB1400010000000000000004; };
 		E8F100010000000000000001 /* TrackpadRevealMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F100020000000000000001 /* TrackpadRevealMonitor.swift */; };
 		B71007010000000000000001 /* onboarding-promotion.png in Resources */ = {isa = PBXBuildFile; fileRef = B71007010000000000000002 /* onboarding-promotion.png */; };
 		049B4FDC2F286C6400DB81C4 /* GoogleGenerativeAI in Frameworks */ = {isa = PBXBuildFile; productRef = BB9657CA59FA72893CD28153 /* GoogleGenerativeAI */; };
@@ -177,6 +179,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		AB1400010000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateService.swift; sourceTree = "<group>"; };
 		E8F100020000000000000001 /* TrackpadRevealMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackpadRevealMonitor.swift; path = SenseFlow/Managers/TrackpadRevealMonitor.swift; sourceTree = "<group>"; };
 		B71007010000000000000002 /* onboarding-promotion.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "onboarding-promotion.png"; sourceTree = "<group>"; };
 		024B4E2A3859D40070C3A57E /* EmptyBackgroundView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EmptyBackgroundView.swift; sourceTree = "<group>"; };
@@ -350,6 +353,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AB1400010000000000000005,
 				049B4FDC2F286C6400DB81C4 /* GoogleGenerativeAI in Frameworks */,
 				049B4FE12F286E9000DB81C4 /* OpenTelemetryProtocolExporterHTTP in Frameworks */,
 				04BC7F422F189BF8006978CE /* SQLite in Frameworks */,
@@ -731,6 +735,7 @@
 		A1000013000000000000001 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				AB1400010000000000000002,
 				04BC7F4B2F18AC00006978CE /* ClipboardMonitor.swift */,
 				26321B3B20574A819F5B24AB /* NotificationService.swift */,
 				04BC7F5A2F18AC10006978CE /* AppIconCache.swift */,
@@ -944,6 +949,7 @@
 			);
 			name = SenseFlow;
 			packageProductDependencies = (
+				AB1400010000000000000004,
 				04BC7F412F189BF8006978CE /* SQLite */,
 				05BC7F422F189BF9006978CE /* OpenAI */,
 				BB9657CA59FA72893CD28153 /* GoogleGenerativeAI */,
@@ -1000,6 +1006,7 @@
 			);
 			mainGroup = A1000007000000000000001;
 			packageReferences = (
+				AB1400010000000000000003,
 				04BC7F402F189BF8006978CE /* XCRemoteSwiftPackageReference "SQLite.swift" */,
 				05BC7F412F189BF9006978CE /* XCRemoteSwiftPackageReference "OpenAI" */,
 				EADB05BA9241E78FBE51EF4E /* XCRemoteSwiftPackageReference "generative-ai-swift" */,
@@ -1060,6 +1067,7 @@
 				CA0100010000000000000001 /* ClipboardOnboardingCoordinator.swift in Sources */,
 				04BC7F462F18A84E006978CE /* ClipboardItem.swift in Sources */,
 				A1000003000000000000001 /* ClipboardItemType.swift in Sources */,
+				AB1400010000000000000001,
 				A1000001000000000000001 /* AppDelegate.swift in Sources */,
 				04BC7F4A2F18A9C0006978CE /* DatabaseManager.swift in Sources */,
 				7600F314F1DB4FCFA9B777B2 /* AccessibilityManager.swift in Sources */,
@@ -1464,6 +1472,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		AB1400010000000000000003 = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/sparkle-project/Sparkle"; requirement = {kind = upToNextMajorVersion; minimumVersion = 2.10.0; }; };
 		049B4FDD2F286E9000DB81C4 /* XCRemoteSwiftPackageReference "opentelemetry-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/open-telemetry/opentelemetry-swift";
@@ -1507,6 +1516,7 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		AB1400010000000000000004 = {isa = XCSwiftPackageProductDependency; package = AB1400010000000000000003; productName = Sparkle; };
 		049B4FE02F286E9000DB81C4 /* OpenTelemetryProtocolExporterHTTP */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 049B4FDD2F286E9000DB81C4 /* XCRemoteSwiftPackageReference "opentelemetry-swift" */;

@@ -41,6 +41,7 @@ import SwiftUI
 
         // 注册 UserDefaults 默认值（必须在最开始）
         registerUserDefaultsDefaults()
+        AppUpdateService.shared.start()
 
         // 初始化默认 Langfuse 密钥（首次启动时）
         initializeDefaultLangfuseKeys()

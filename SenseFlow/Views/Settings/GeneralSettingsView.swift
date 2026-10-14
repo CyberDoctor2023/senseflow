@@ -35,6 +35,7 @@ struct GeneralSettingsView: View {
                     .onChange(of: model.launchAtLogin) { _, enabled in setLaunchAtLogin(enabled) }
                 if let launchError { Text(launchError).font(.pingFang(.caption)).foregroundStyle(.red) }
             }
+            AppUpdateSettingsView()
             SettingsSection(title: "卡片动效") {
                 Picker("卡片动效", selection: $cardMotion) {
                     ForEach(HistoryCardMotion.allCases, id: \.self) { motion in
