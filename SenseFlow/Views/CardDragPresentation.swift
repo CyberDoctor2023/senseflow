@@ -132,17 +132,13 @@ import Observation
 /// Renders the same card content above history, sharing native glass merging with the toolbar.
 struct CardDragOverlay: View {
     @Namespace private var namespace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let drag = CardDragPresentation.shared
     @ViewBuilder private func identifiedSurface(_ surface: AnyView) -> some View {
         if #available(macOS 26.0, *) {
             surface
-                .glassEffect(.regular, in: DragToolCardShape(
-                    radius: Constants.Card.cornerRadius,
-                    connectionX: drag.targetFrame.map { $0.midX - drag.frame.minX } ?? drag.frame.width / 2,
-                    connectionHeight: drag.targetFrame == nil ? 0 : 18))
+                .glassEffect(.regular, in: .rect(cornerRadius: Constants.Card.cornerRadius))
                 .glassEffectID("dragged-card", in: namespace)
-                .animation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .easeInOut(duration: 0.18),
-                           value: drag.targetFrame)
         } else { surface.compatibleGlassEffect(cornerRadius: Constants.Card.cornerRadius, interactive: false) }
     }
 
@@ -154,12 +150,16 @@ struct CardDragOverlay: View {
                     .position(x: drag.frame.midX - drag.ownerFrame.minX,
                               y: drag.ownerFrame.maxY - drag.frame.midY)
                     .opacity(drag.opacity)
-                if let target = drag.targetFrame {
-                    targetSurface
-                        .frame(width: target.width, height: target.height)
-                        .position(x: target.midX - drag.ownerFrame.minX,
-                                  y: drag.ownerFrame.maxY - target.midY)
+                ZStack(alignment: .topLeading) {
+                    if let target = drag.targetFrame {
+                        targetSurface
+                            .frame(width: target.width, height: target.height)
+                            .position(x: target.midX - drag.ownerFrame.minX,
+                                      y: drag.ownerFrame.maxY - target.midY)
+                            .transition(reduceMotion ? .opacity : .scale(scale: 1 / 1.16).combined(with: .opacity))
+                    }
                 }
+                .animation(reduceMotion ? nil : .snappy(duration: 0.22, extraBounce: 0), value: drag.targetFrame != nil)
             }
         }
         .compatibleGlassGroup(spacing: 26)
@@ -176,33 +176,12 @@ struct CardDragOverlay: View {
                 }
                 .frame(width: SearchBarConfig.default.buttonSize, height: SearchBarConfig.default.buttonSize)
                 .foregroundStyle(.primary)
-                .glassEffect(.regular.interactive(), in: .circle)
+                .glassEffect(.regular.tint(.primary.opacity(0.08)).interactive(), in: .circle)
                 .glassEffectID("selected-tool", in: namespace)
-                .scaleEffect(1.16)
+                .scaleEffect(reduceMotion ? 1 : 1.16)
         }
     }
 
-}
-
-/// A small top-edge lobe points toward the single native drop destination.
-private struct DragToolCardShape: Shape {
-    let radius: CGFloat
-    var connectionX: CGFloat
-    var connectionHeight: CGFloat
-
-    var animatableData: AnimatablePair<CGFloat, CGFloat> {
-        get { AnimatablePair(connectionX, connectionHeight) }
-        set { connectionX = newValue.first; connectionHeight = newValue.second }
-    }
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path(roundedRect: rect, cornerRadius: radius)
-        if connectionX > radius, connectionX < rect.width - radius, connectionHeight > 0 {
-            path.addEllipse(in: CGRect(x: connectionX - 20, y: -connectionHeight, width: 40,
-                                       height: connectionHeight + 12))
-        }
-        return path
-    }
 }
 
 /// Scores a local top-edge connection independently of the mouse grip or window focus.

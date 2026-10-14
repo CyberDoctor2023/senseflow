@@ -614,3 +614,5 @@ Apple Doc MCP核对withAnimation(_:completionCriteria:_:completion:)在所有动
 - 阶段 29 平台动效：Apple Doc MCP 确认 NSView.displayLink（macOS14）同步视图所在显示器，Spring 提供 smooth/snappy/bouncy 及位置/速度计算，SymbolEffect 提供原生符号反馈，CAMediaTimingFunction(name:) 使用命名曲线。事实、链接、不能原生替代的边界与原生验证见 [动效平台替换合同](MOTION_PLATFORM_2026-10-08.md)。普通鼠标惯性事件适配属于应用逻辑，不把公开 API 当作苹果 Dock 公式或官方长按阈值。
 
 - 2026-10-14 输入诊断：Apple Doc MCP AppKit 查询确认 [addLocalMonitorForEvents(matching:handler:)](https://developer.apple.com/documentation/appkit/nsevent/addlocalmonitorforevents(matching:handler:)) 接收应用派发前与指定 mask 匹配的事件；[EventTypeMask.keyDown](https://developer.apple.com/documentation/appkit/nsevent/eventtypemask/keydown) 是键盘按下事件掩码。因此 Escape 分支必须将 keyDown 纳入订阅，不能只实现 handler 分支。文档不保证原生拖放的嵌套事件循环必定经过该 monitor，仍需运行验证。
+
+- 2026-10-15 工具目标反馈：Apple Doc MCP SwiftUI 查询 GlassEffectContainer、Glass.interactive、Glass.tint、Animation.snappy、glassEffectTransition；并查官方 [Applying Liquid Glass to custom views](https://developer.apple.com/documentation/SwiftUI/Applying-Liquid-Glass-to-custom-views)。容器支持多个玻璃形状融合/形变，interactive 配置交互，tint 配置颜色，snappy 为短促、少量弹性的预设弹簧。用户要求删去自画凸起；采用圆角矩形和唯一圆球的原生材质强调与弹簧反馈。靠近阈值和放大比例是产品参数，不是 Apple 磁性拖放预设。

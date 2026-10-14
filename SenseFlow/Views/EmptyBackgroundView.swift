@@ -238,12 +238,8 @@ struct EmptyBackgroundView: View {
                 .buttonStyle(.plain)
                 .modifier(ToolGlassSurface(id: tool.id, namespace: glassNamespace,
                                            active: showsTools, selected: targetedTool == tool.id))
-                .scaleEffect(targetedTool == tool.id ? 1.16 : (hoveredTool == tool.id ? Constants.SelectionFeedback.scale : 1))
-                .overlay {
-                    Circle().stroke(.primary.opacity(targetedTool == tool.id ? 0.28 : 0), lineWidth: 1.5)
-                        .allowsHitTesting(false)
-                }
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: targetedTool)
+                .scaleEffect(reduceMotion ? 1 : targetedTool == tool.id ? 1.16 : (hoveredTool == tool.id ? Constants.SelectionFeedback.scale : 1))
+                .animation(reduceMotion ? nil : .snappy(duration: 0.22, extraBounce: 0), value: targetedTool)
                 .onHover { inside in
                     if inside { hoveredTool = tool.id }
                     else if hoveredTool == tool.id { hoveredTool = nil }
@@ -543,7 +539,7 @@ private struct ToolGlassSurface: ViewModifier {
     @available(macOS 26.0, *)
     private func surface(_ content: Content) -> some View {
         content.foregroundStyle(selected ? Color.primary : Color.secondary)
-            .glassEffect(.regular.interactive(), in: .circle)
+            .glassEffect(selected ? .regular.tint(.primary.opacity(0.08)).interactive() : .regular.interactive(), in: .circle)
             .glassEffectID(id, in: namespace)
             .glassEffectTransition(.matchedGeometry)
     }

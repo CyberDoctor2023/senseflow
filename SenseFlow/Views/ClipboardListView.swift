@@ -176,6 +176,10 @@ struct ClipboardListView: View {
             }
         }
         .contentShape(Rectangle())
+        .simultaneousGesture(TapGesture().onEnded {
+            // Native card presses consume their events; unclaimed history taps dismiss the preview.
+            _ = viewModel.actions.documents.dismissPointerPreview()
+        })
         .task {
             if loadOnAppear { await viewModel.loadItems() }
         }

@@ -40,6 +40,10 @@
 
 ## 当前验收审计与恢复入口
 
+2026-10-15 范围修正：用户取消自画上缘凸起，并要求中央放大卡片与横排大尺寸工具；后者替代原顶部小圆球布局，完整工具与拖放验收范围保留。另增加预览背景点击关闭回归。历史列表补充直接 TapGesture 到现有 dismissPointerPreview，原生卡片按压仍由输入适配器消费；需实测背景/卡片/拖放三者不误触，未验证前为候选修复。中央工具布局尚未实现，不能沿用旧布局验收声称完成。
+
+候选验证：build-flat-card-feedback-final.log 与 build-history-dismiss.log 均 BUILD SUCCEEDED；生产源码无 DragToolCardShape/connectionHeight/connectionX。平整卡片反馈版已备份、签名校验并安装；背景点击修改为后续构建，尚未安装。CUA 呼出可读 AX 后下一个动作多次 noWindowsAvailable，不能把该输入链当作视觉验收。中央布局待实现，目标未完成。
+
 连续三轮 CUA 均明确报告 Mac 锁屏且自动解锁失败。源码 checkout 干净，最新生产提交 d727837；最后构建成功。目标受阻，未完成，不继续用静态修改代替实际验证。
 
 | 验收项 | 当前证据 | 尚缺证据 |
