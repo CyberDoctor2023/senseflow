@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import QuartzCore
 
 /// A bounded summary with an explicit full-document affordance.
 struct ClipboardCardView: View {
@@ -13,16 +14,13 @@ struct ClipboardCardView: View {
     @State private var image: CGImage?
     @State private var hovered = false
     @State private var pressed = false
+    @State private var dragging = false
 
     private var isPreviewSource: Bool { actions.documents.source?.itemID == item.id }
     private var isRaised: Bool { hovered || isPreviewSource }
     private var cardScale: CGFloat { reduceMotion ? 1 : pressed ? 1.10 : isRaised ? Constants.SelectionFeedback.scale : 1 }
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            contentPreview
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            sourceFooter
-        }
+        cardContent
         .padding(14)
         .frame(width: Constants.Card.width, height: Constants.Card.height)
         .scaleEffect(cardScale, anchor: .center)
@@ -36,9 +34,11 @@ struct ClipboardCardView: View {
         .animation(reduceMotion ? nil : .smooth(duration: Constants.SelectionFeedback.duration), value: hovered)
         .animation(reduceMotion ? nil : .smooth(duration: Constants.SelectionFeedback.duration), value: isPreviewSource)
         .animation(reduceMotion ? nil : .easeInOut(duration: pressed ? 0.45 : 0.2), value: pressed)
-        .background(CardPointerRegion(isPreviewSource: isPreviewSource, loadDragItem: {
+        .opacity(dragging ? 0.25 : 1)
+        .background(CardPointerRegion(isPreviewSource: isPreviewSource, dragSurface: AnyView(dragSurface), loadDragItem: {
             try await actions.makeDragPasteboardItem(item)
         }, onDragStateChanged: { active in
+            dragging = active
             actions.setDragging(active)
         }, onEnter: { bounds in
             hovered = true
@@ -48,7 +48,10 @@ struct ClipboardCardView: View {
             hovered = false
             onPointerPresenceChanged?(false)
             actions.documents.pointerLeft(item.id)
-        }, onPressChanged: { pressed = $0 }, onSelect: {
+        }, onPressChanged: {
+            pressed = $0
+            actions.setPressed($0, itemID: item.id)
+        }, onSelect: {
             actions.select(item)
         }, onPreview: { bounds in
             if item.type == .video {
@@ -66,7 +69,7 @@ struct ClipboardCardView: View {
         .contentShape(RoundedRectangle(cornerRadius: Constants.Card.cornerRadius))
         .focusable()
         .focusEffectDisabled()
-        .onDisappear { pressed = false; onPointerPresenceChanged?(false) }
+        .onDisappear { pressed = false; actions.setPressed(false, itemID: item.id); onPointerPresenceChanged?(false) }
         .onChange(of: actions.documents.isLoading) { _, loading in
             if !loading { pressed = false }
         }
@@ -78,6 +81,20 @@ struct ClipboardCardView: View {
             }
         }
     }
+    private var cardContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            contentPreview
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            sourceFooter
+        }
+    }
+    private var dragSurface: some View {
+        cardContent.padding(14)
+            .frame(width: Constants.Card.width, height: Constants.Card.height)
+            .compatibleGlassEffect(cornerRadius: Constants.Card.cornerRadius, interactive: false)
+            .environment(\.appearsActive, true)
+    }
+
     private var sourceFooter: some View {
         HStack(spacing: 6) {
             Image(nsImage: item.appIcon).resizable().frame(width: 14, height: 14)
@@ -112,6 +129,7 @@ struct ClipboardCardView: View {
 /// Converts real card bounds to screen coordinates without geometry work in the body.
 struct CardPointerRegion: NSViewRepresentable {
     let isPreviewSource: Bool
+    let dragSurface: AnyView
     var isEnabled: Bool = true
     let loadDragItem: () async throws -> NSPasteboardItem
     let onDragStateChanged: (Bool) -> Void
@@ -132,6 +150,7 @@ struct CardPointerRegion: NSViewRepresentable {
         view.isPreviewSource = isPreviewSource
         view.loadDragItem = loadDragItem
         view.onDragStateChanged = onDragStateChanged
+        view.dragSurface = dragSurface
     }
     static func dismantleNSView(_ view: PointerView, coordinator: ()) { view.stopMonitoring() }
     final class PointerView: NSView, NSDraggingSource, HistoryCardSurface {
@@ -141,6 +160,7 @@ struct CardPointerRegion: NSViewRepresentable {
         var isPreviewSource = false
         var loadDragItem: (() async throws -> NSPasteboardItem)?
         var onDragStateChanged: ((Bool) -> Void)?
+        var dragSurface: AnyView?
         private var dragTask: Task<Void, Never>?
         private var dragSessionActive = false
         private var pressOrigin: NSPoint?
@@ -223,10 +243,8 @@ struct CardPointerRegion: NSViewRepresentable {
             guard dragTask == nil, !dragSessionActive, let loader = loadDragItem,
                   let root = window?.contentView else { return }
             let rect = convert(bounds, to: root)
-            guard let bitmap = root.bitmapImageRepForCachingDisplay(in: rect) else { return }
-            root.cacheDisplay(in: rect, to: bitmap)
-            let image = NSImage(size: bounds.size)
-            image.addRepresentation(bitmap)
+            let sourceFrame = window?.convertToScreen(root.convert(rect, to: nil)) ?? .zero
+            let image = NSImage(size: bounds.size) // The native session carries payload; the live panel renders the card.
             dragTask = Task { @MainActor [weak self] in
                 guard let self else { return }
                 defer { if !Task.isCancelled { self.dragTask = nil } }
@@ -237,6 +255,9 @@ struct CardPointerRegion: NSViewRepresentable {
                           NSEvent.pressedMouseButtons & 1 != 0 else { self.cancelHold(); return }
                     let item = NSDraggingItem(pasteboardWriter: payload)
                     item.setDraggingFrame(self.bounds, contents: image)
+                    if let surface = self.dragSurface {
+                        CardDragPresentation.shared.begin(surface: surface, frame: sourceFrame)
+                    }
                     self.dragSessionActive = true
                     self.onDragStateChanged?(true)
                     let session = self.beginDraggingSession(with: [item], event: event, source: self)
@@ -245,7 +266,11 @@ struct CardPointerRegion: NSViewRepresentable {
             }
         }
         func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation { .copy }
+        func draggingSession(_ session: NSDraggingSession, movedTo screenPoint: NSPoint) {
+            CardDragPresentation.shared.move(to: screenPoint)
+        }
         func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+            CardDragPresentation.shared.finish(cancelled: operation.isEmpty)
             dragSessionActive = false
             cancelHold()
             onDragStateChanged?(false)
@@ -264,5 +289,73 @@ struct CardPointerRegion: NSViewRepresentable {
             onEnter?(window.convertToScreen(convert(bounds, to: nil)))
         }
         override func mouseExited(with event: NSEvent) { cancelHold(); onLeave?() }
+    }
+}
+
+/// A live native glass surface follows the drag; the drag-local pasteboard remains independent.
+@MainActor final class CardDragPresentation {
+    static let shared = CardDragPresentation()
+    private var panel: NSPanel?
+    private var origin = CGRect.zero
+    private var offset = CGPoint.zero
+    private var target: CGRect?
+    private var pointer = CGPoint.zero
+
+    func begin(surface: AnyView, frame: CGRect) {
+        panel?.orderOut(nil)
+        origin = frame
+        pointer = NSEvent.mouseLocation
+        offset = CGPoint(x: pointer.x - frame.minX, y: pointer.y - frame.minY)
+        target = nil
+        let panel = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.ignoresMouseEvents = true
+        panel.level = .popUpMenu
+        panel.contentView = NSHostingView(rootView: GeometryReader { geometry in
+            surface
+                .frame(width: frame.width, height: frame.height)
+                .scaleEffect(min(geometry.size.width / max(frame.width, 1), geometry.size.height / max(frame.height, 1)))
+                .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+        })
+        self.panel = panel
+        panel.orderFrontRegardless()
+    }
+    func move(to point: CGPoint) {
+        pointer = point
+        guard target == nil else { return }
+        panel?.setFrameOrigin(CGPoint(x: point.x - offset.x, y: point.y - offset.y))
+    }
+    func attract(to frame: CGRect) {
+        guard let panel else { return }
+        target = frame
+        var attracted = origin
+        attracted.origin = CGPoint(x: frame.midX - origin.width / 2, y: frame.midY - origin.height / 2)
+        animate(panel, frame: attracted, close: false)
+    }
+    func releaseTarget() {
+        target = nil
+        move(to: pointer)
+    }
+    func finish(cancelled: Bool) {
+        guard let panel else { return }
+        let destination: CGRect
+        if cancelled { destination = origin }
+        else if let target { destination = target }
+        else { destination = panel.frame }
+        self.panel = nil
+        target = nil
+        animate(panel, frame: destination, close: true)
+    }
+    private func animate(_ panel: NSPanel, frame: CGRect, close: Bool) {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.24
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            panel.animator().setFrame(frame, display: true)
+            if close { panel.animator().alphaValue = 0 }
+        } completionHandler: {
+            if close { panel.orderOut(nil); panel.contentView = nil }
+        }
     }
 }

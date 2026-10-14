@@ -7,6 +7,7 @@ import Quartz
 @MainActor @Observable final class HistoryActionCoordinator {
     private(set) var errorMessage: String?
     private(set) var isDragging = false
+    private(set) var pressedItemID: Int64?
     var quickLookURL: URL? {
         didSet {
             if let quickLookURL { recordingPreview.present(quickLookURL) }
@@ -46,6 +47,11 @@ import Quartz
         }
     }
 
+    /// Identifies the current press without letting another card clear its feedback.
+    func setPressed(_ pressed: Bool, itemID: Int64) {
+        if pressed { pressedItemID = itemID }
+        else if pressedItemID == itemID { pressedItemID = nil }
+    }
     /// Tracks only the native drag lifetime, independently of the history pin mode.
     func setDragging(_ active: Bool) {
         guard isDragging != active else { return }

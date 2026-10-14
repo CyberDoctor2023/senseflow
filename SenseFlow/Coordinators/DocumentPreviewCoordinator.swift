@@ -53,6 +53,13 @@ import AppKit
         host.onPointerDismiss = { [weak self] in self?.dismissPointerPreview() ?? false }
     }
 
+    /// Returns the current document text, including unsaved edits, without changing the clipboard.
+    func toolInput() throws -> String? {
+        guard previewWindowNumber != nil, let source else { return nil }
+        guard !isMedia, editor?.isComposing != true else { throw DocumentStoreError.unavailable }
+        return editor?.textSnapshot() ?? source.text
+    }
+
     /// Hover only updates pointer lifetime; an accepted press owns preview loading.
     func pointerEntered(_ item: ClipboardItem, anchor: CGRect) {
         lastHoveredID = item.id
@@ -439,7 +446,7 @@ import AppKit
         // A narrow card-to-window corridor keeps traversal stable without retaining the entire history panel.
         let corridor = CGRect(x: min(anchor.midX, frame.midX) - 32, y: min(anchor.maxY, frame.minY),
                               width: abs(anchor.midX - frame.midX) + 64, height: abs(frame.minY - anchor.maxY))
-        if anchor.contains(point) || frame.contains(point) || corridor.contains(point) || NSEvent.pressedMouseButtons != 0 {
+        if anchor.contains(point) || frame.contains(point) || corridor.contains(point) || host.containsToolDock(point) || NSEvent.pressedMouseButtons != 0 {
             outsideSince = nil
         } else if let since = outsideSince {
             if Date().timeIntervalSince(since) >= 0.25 { closeImmediately() }

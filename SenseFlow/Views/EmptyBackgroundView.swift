@@ -91,6 +91,8 @@ struct EmptyBackgroundView: View {
                 staticBody
             }
         }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: showsTools)
+        .animation(reduceMotion ? nil : .spring(duration: 0.28, bounce: 0.12), value: toolsEngaged)
         .task(id: toolRevision) { await reloadTools() }
         .onReceive(NotificationCenter.default.publisher(for: .promptToolsDidUpdate).receive(on: RunLoop.main)) { _ in
             toolRevision = UUID()
@@ -146,7 +148,7 @@ struct EmptyBackgroundView: View {
 
                 Spacer()
 
-                toolTargets
+                contextualToolTargets
 
                 Spacer()
 
@@ -184,7 +186,7 @@ struct EmptyBackgroundView: View {
 
             Spacer()
 
-            toolTargets
+            contextualToolTargets
 
             Spacer()
 
@@ -194,11 +196,35 @@ struct EmptyBackgroundView: View {
         .frame(maxWidth: .infinity)  // 只约束宽度，让高度自然确定
     }
 
+    private var toolsEngaged: Bool {
+        let document = viewModel.actions.documents
+        return viewModel.actions.isDragging || document.isLoading || document.previewWindowNumber != nil
+    }
+
+    private var showsTools: Bool { toolsEngaged || viewModel.actions.pressedItemID != nil }
+
+    @ViewBuilder private var contextualToolTargets: some View {
+        if showsTools {
+            if #available(macOS 26.0, *) {
+                toolTargets
+                    .scaleEffect(toolsEngaged ? 1 : 0.65, anchor: .bottom)
+                    .opacity(toolsEngaged ? 1 : 0.35)
+                    .allowsHitTesting(toolsEngaged)
+                    .glassEffectID("contextual-tools", in: glassNamespace)
+                    .glassEffectTransition(.materialize)
+                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
+            } else {
+                toolTargets
+                    .scaleEffect(toolsEngaged ? 1 : 0.65, anchor: .bottom)
+                    .opacity(toolsEngaged ? 1 : 0.35)
+                    .allowsHitTesting(toolsEngaged)
+                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
+            }
+        }
+    }
+
     private var toolTargets: some View {
         HStack(spacing: elementSpacing) {
-            if !tools.isEmpty {
-                Text("工具").font(.pingFang(size: 11)).foregroundStyle(.secondary)
-            }
             ForEach(Array(tools.prefix(9).enumerated()), id: \.element.id) { index, tool in
                 Button {
                     runTool(tool, input: nil)
@@ -273,7 +299,12 @@ struct EmptyBackgroundView: View {
     @MainActor private func runTool(_ tool: PromptTool, input: String?) {
         guard runningTool == nil else { return }
         runningTool = tool.id
-        Task { await executeTool(tool, input: input) }
+        Task {
+            do {
+                let current = try input ?? viewModel.actions.documents.toolInput()
+                await executeTool(tool, input: current)
+            } catch { runningTool = nil; toolError = error.localizedDescription }
+        }
     }
 
     @MainActor private func executeTool(_ tool: PromptTool, input: String?) async {
@@ -431,59 +462,36 @@ private struct NativeToolDropTarget: NSViewRepresentable {
         view.onDrop = onDrop
     }
 
-    final class DestinationView: NSView {
+    final class DestinationView: NSView, HistoryToolSurface {
         var enabled = true
         var reduceMotion = false
         var onTargetChanged: ((Bool) -> Void)?
         var onActivate: (() -> Void)?
         var onDrop: ((String) -> Bool)?
-        private var originalSize: NSSize?
 
         override func mouseUp(with event: NSEvent) { if enabled { onActivate?() } }
         override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
             guard enabled, sender.draggingPasteboard.string(forType: .string) != nil else { return [] }
             onTargetChanged?(true)
+            if let window { CardDragPresentation.shared.attract(to: window.convertToScreen(convert(bounds, to: nil))) }
             return .copy
         }
         override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
             enabled ? .copy : []
         }
-        override func updateDraggingItemsForDrag(_ sender: (any NSDraggingInfo)?) {
-            guard enabled, !reduceMotion, let sender else { return }
-            sender.enumerateDraggingItems(options: [], for: self, classes: [NSPasteboardItem.self], searchOptions: [:]) { item, _, _ in
-                if self.originalSize == nil { self.originalSize = item.draggingFrame.size }
-                guard let size = self.originalSize else { return }
-                let scaled = NSSize(width: size.width * 0.78, height: size.height * 0.78)
-                item.draggingFrame = NSRect(x: self.bounds.midX - scaled.width / 2,
-                    y: self.bounds.midY - scaled.height / 2, width: scaled.width, height: scaled.height)
-            }
-        }
         override func draggingExited(_ sender: (any NSDraggingInfo)?) {
             onTargetChanged?(false)
-            if let sender, let size = originalSize {
-                let point = convert(sender.draggingLocation, from: nil)
-                sender.enumerateDraggingItems(options: [], for: self, classes: [NSPasteboardItem.self], searchOptions: [:]) { item, _, _ in
-                    item.draggingFrame = NSRect(x: point.x - size.width / 2, y: point.y - size.height / 2,
-                                               width: size.width, height: size.height)
-                }
-            }
-            originalSize = nil
+            CardDragPresentation.shared.releaseTarget()
         }
         override func prepareForDragOperation(_ sender: any NSDraggingInfo) -> Bool { enabled }
         override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
             guard enabled, let text = sender.draggingPasteboard.string(forType: .string),
                   onDrop?(text) == true else { return false }
-            sender.animatesToDestination = !reduceMotion
-            if !reduceMotion {
-                sender.enumerateDraggingItems(options: [], for: self, classes: [NSPasteboardItem.self], searchOptions: [:]) { item, _, _ in
-                    // The system eases the complete card image into the tool circle on release.
-                    item.draggingFrame = self.bounds.insetBy(dx: 4, dy: 4)
-                }
-            }
+            // The live card surface owns the visible arrival; native dragging carries only the data.
+            sender.animatesToDestination = false
             return true
         }
         override func draggingEnded(_ sender: any NSDraggingInfo) {
-            originalSize = nil
             onTargetChanged?(false)
         }
     }

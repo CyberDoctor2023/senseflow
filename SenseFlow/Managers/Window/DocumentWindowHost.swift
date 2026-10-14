@@ -78,10 +78,13 @@ enum DocumentCloseChoice { case save, keepDraft, discard, cancel }
         let width = min(760, visible.width * 0.82)
         let sampleHeight = (sample as NSString).boundingRect(with: NSSize(width: max(width - 64, 1), height: CGFloat.greatestFiniteMagnitude), options: [.usesLineFragmentOrigin], attributes: [.font: (NSFont(name: "PingFangSC-Regular", size: 15) ?? NSFont.systemFont(ofSize: 15))]).height
         let contentHeight = imageAspectRatio.map { width / max($0, 0.1) } ?? (hasMoreText ? visible.height * 0.7 : sampleHeight)
-        let historyTop = NSApp.windows.first(where: { workspace.contains($0) && $0.isVisible && $0.frame.contains(CGPoint(x: anchor.midX, y: anchor.midY)) })?.frame.maxY ?? anchor.maxY
-        let remaining = max(180, visible.maxY - historyTop - 16)
+        let historyWindow = NSApp.windows.first(where: { workspace.contains($0) && $0.isVisible && $0.frame.contains(CGPoint(x: anchor.midX, y: anchor.midY)) })
+        let dock = historyWindow.flatMap { workspace.toolSurfaceFrame(in: $0) }
+        let historyTop = dock?.maxY ?? historyWindow?.frame.maxY ?? anchor.maxY
+        let dockGap: CGFloat = dock == nil ? 16 : 8
+        let remaining = max(180, visible.maxY - historyTop - dockGap)
         let height = min(max(220, contentHeight + 100), visible.height * 0.78, remaining)
-        let targetY = min(visible.maxY - height, historyTop + 16)
+        let targetY = min(visible.maxY - height, historyTop + dockGap)
         let target = CGRect(x: visible.midX - width / 2, y: max(visible.minY, targetY), width: width, height: height)
         let sourceFrame = anchor.width > 0 && anchor.height > 0 ? anchor : target
         let reducedMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -188,13 +191,22 @@ enum DocumentCloseChoice { case save, keepDraft, discard, cancel }
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool { onClose?(); return false }
 
+    /// Keeps pointer traversal between the preview and its tool dock inside the preview interaction.
+    func containsToolDock(_ point: CGPoint) -> Bool {
+        NSApp.windows.contains { window in
+            guard window.isVisible, workspace.contains(window), let frame = workspace.toolSurfaceFrame(in: window) else { return false }
+            return frame.insetBy(dx: -8, dy: -8).contains(point)
+        }
+    }
+
     private func startDismissMonitoring() {
         guard localDismissMonitor == nil, panel?.isVisible == true else { return }
         localDismissMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             guard let self, self.panel?.isVisible == true, !self.isClosing else { return event }
             guard event.window !== self.panel else { return event }
             if let window = event.window, self.workspace.contains(window),
-               self.workspace.containsCard(in: window, at: event.locationInWindow) { return event }
+               (self.workspace.containsCard(in: window, at: event.locationInWindow) ||
+                self.workspace.containsTool(in: window, at: event.locationInWindow)) { return event }
             _ = self.onPointerDismiss?()
             return event
         }
