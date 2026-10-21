@@ -12,19 +12,8 @@ import CoreGraphics
 /// 控制卡片区域相对于大背景的位置和布局
 struct CardAreaLayoutConfig {
 
-    // MARK: - Background Offset
-
-    /// 相对于背景顶部的偏移（内边距）
-    var backgroundTopOffset: CGFloat
-
-    /// 相对于背景底部的偏移（内边距）
-    var backgroundBottomOffset: CGFloat
-
-    /// 相对于背景左侧的偏移（内边距）
-    var backgroundLeftOffset: CGFloat
-
-    /// 相对于背景右侧的偏移（内边距）
-    var backgroundRightOffset: CGFloat
+    /// One logical-point inset shared by all four sides of the history surface.
+    var contentInset: CGFloat
 
     // MARK: - Card Layout
 
@@ -38,11 +27,8 @@ struct CardAreaLayoutConfig {
 
     /// 默认配置
     static let `default` = CardAreaLayoutConfig(
-        backgroundTopOffset: 12,     // 距离背景顶部12pt
-        backgroundBottomOffset: 12,  // 距离背景底部12pt
-        backgroundLeftOffset: 12,    // 距离背景左侧12pt
-        backgroundRightOffset: 12,   // 距离背景右侧12pt
-        cardHeight: 216,             // 卡片高度
+        contentInset: 28,           // 四边统一内边距，不随显示器分辨率缩放
+        cardHeight: Constants.Card.height, // 与实际渲染卡片共用高度
         cardSpacing: 16              // 卡片间距16pt
     )
 }

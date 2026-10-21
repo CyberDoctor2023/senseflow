@@ -7,8 +7,19 @@
 
 import Cocoa
 
+/// Routes wheel input inside the history viewport, returning whether it was consumed.
+protocol HistoryWheelRouting: AnyObject {
+    func routeHistoryWheel(_ event: NSEvent) -> Bool
+}
+
 /// 自定义 NSPanel，允许接受键盘输入
 class KeyboardAcceptingPanel: NSPanel {
+    weak var historyWheelRouter: (any HistoryWheelRouting)?
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .scrollWheel, historyWheelRouter?.routeHistoryWheel(event) == true { return }
+        super.sendEvent(event)
+    }
     override var canBecomeKey: Bool {
         return true
     }

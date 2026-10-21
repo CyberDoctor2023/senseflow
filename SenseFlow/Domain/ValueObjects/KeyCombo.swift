@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Carbon
 
 /// 快捷键组合值对象
 struct KeyCombo: Equatable, Codable, Sendable {
@@ -19,7 +20,7 @@ struct KeyCombo: Equatable, Codable, Sendable {
 
     /// 从原始值创建
     init?(keyCode: UInt16, modifiers: UInt32) {
-        guard keyCode > 0 else { return nil }
+        guard keyCode != 0 || modifiers != 0 else { return nil }
         self.keyCode = KeyCode(keyCode)
         self.modifiers = KeyModifiers(rawValue: modifiers)
     }
@@ -45,7 +46,6 @@ struct KeyCode: Equatable, Codable, Sendable {
     let value: UInt16
 
     init(_ value: UInt16) {
-        precondition(value > 0, "KeyCode must be positive")
         self.value = value
     }
 }
@@ -54,8 +54,8 @@ struct KeyCode: Equatable, Codable, Sendable {
 struct KeyModifiers: OptionSet, Codable, Sendable {
     let rawValue: UInt32
 
-    static let command = KeyModifiers(rawValue: 1 << 0)
-    static let shift = KeyModifiers(rawValue: 1 << 1)
-    static let option = KeyModifiers(rawValue: 1 << 2)
-    static let control = KeyModifiers(rawValue: 1 << 3)
+    static let command = KeyModifiers(rawValue: UInt32(cmdKey))
+    static let shift = KeyModifiers(rawValue: UInt32(shiftKey))
+    static let option = KeyModifiers(rawValue: UInt32(optionKey))
+    static let control = KeyModifiers(rawValue: UInt32(controlKey))
 }

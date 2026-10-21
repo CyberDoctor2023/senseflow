@@ -25,11 +25,11 @@ struct PinIconView: View {
     let size: CGFloat
 
     @State private var isHovered = false
-    @State private var isAnimating = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Image(systemName: "pin.fill")
-            .font(.system(size: size))
+            .font(.pingFang(size: size))
             // 颜色：未钉=灰色，已钉=深色，hover=更亮
             .foregroundStyle(foregroundColor)
             // 旋转角度：未钉=45°斜向，已钉=0°垂直
@@ -38,30 +38,12 @@ struct PinIconView: View {
             .offset(y: isHovered && !isPinned ? -2 : 0)
             // Hover: 轻微放大
             .scaleEffect(isHovered ? 1.15 : 1.0)
-            // "钉下去"的动画
-            .scaleEffect(isAnimating ? 0.8 : 1.0)
-            .rotationEffect(.degrees(isAnimating ? -15 : 0))
-            // 流畅的动画
-            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isHovered)
-            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isPinned)
+            .symbolEffect(.bounce, options: .nonRepeating, value: reduceMotion ? false : isPinned)
+            .animation(reduceMotion ? nil : .snappy, value: isHovered)
+            .animation(reduceMotion ? nil : .snappy, value: isPinned)
             // Hover 检测
             .onHover { hovering in
                 isHovered = hovering
-            }
-            // "钉下去"动画触发
-            .onChange(of: isPinned) { newValue in
-                if newValue {
-                    // 钉下去：快速旋转 + 缩小
-                    withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) {
-                        isAnimating = true
-                    }
-                    // 回弹
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                            isAnimating = false
-                        }
-                    }
-                }
             }
             // 扩大点击区域
             .contentShape(Rectangle().inset(by: -8))

@@ -176,70 +176,48 @@ final class PromptToolCoordinator {
     ///
     /// 【错误处理】
     /// - 如果保存失败：抛出错误，快捷键不会注册
-    /// - 如果注册失败：抛出错误，但数据已保存（需要手动清理）
+    /// - 如果注册失败：撤回新增工具并抛出错误
     func createTool(_ tool: PromptTool) async throws {
-        // 【步骤 1】保存到数据库
-        // 为什么先保存？因为快捷键回调需要查询数据库
         try await repository.save(tool)
+        do {
+            try registerHotKey(for: tool)
+        } catch {
+            try await repository.delete(id: tool.toolID)
+            throw error
+        }
+    }
 
-        // 【步骤 2】注册快捷键
-        // 注意：这里使用了闭包（Closure）作为回调
-        // [weak self] 避免循环引用（Retain Cycle）
+    private func registerHotKey(for tool: PromptTool) throws {
         try hotKeyCoordinator.registerToolHotKey(for: tool) { [weak self] in
-            // 快捷键触发时的回调
-            // Task { @MainActor in ... } 确保在主线程执行
             Task { @MainActor in
-                // 执行工具
                 try? await self?.executeTool(id: tool.toolID)
             }
         }
     }
 
-    /// 更新工具
-    ///
-    /// 【更新流程】
-    /// 更新比创建复杂，因为需要处理旧状态：
-    /// 1. 注销旧快捷键（避免冲突）
-    /// 2. 保存新数据
-    /// 3. 注册新快捷键
-    ///
-    /// 【为什么要注销旧快捷键？】
-    /// 假设用户修改了快捷键：
-    /// - 旧快捷键：⌘⌥V
-    /// - 新快捷键：⌘⌥C
-    /// 如果不注销旧的，两个快捷键都会触发同一个工具
+    /// Saves the requested binding; a registration failure restores the previous tool and binding.
     func updateTool(_ tool: PromptTool) async throws {
-        // 【步骤 1】注销旧快捷键
-        // 即使工具没有快捷键，调用 unregister 也是安全的（幂等操作）
-        hotKeyCoordinator.unregisterToolHotKey(for: tool.toolID)
-
-        // 【步骤 2】保存更新
+        guard let previous = try await repository.find(by: tool.toolID) else {
+            throw CoordinatorError.toolNotFound
+        }
         try await repository.save(tool)
-
-        // 【步骤 3】注册新快捷键
-        try hotKeyCoordinator.registerToolHotKey(for: tool) { [weak self] in
-            Task { @MainActor in
-                try? await self?.executeTool(id: tool.toolID)
+        do {
+            if tool.hasShortcut {
+                try registerHotKey(for: tool)
+            } else {
+                hotKeyCoordinator.unregisterToolHotKey(for: tool.toolID)
             }
+        } catch {
+            try await repository.save(previous)
+            try registerHotKey(for: previous)
+            throw error
         }
     }
 
-    /// 删除工具
-    ///
-    /// 【删除流程】
-    /// 删除也需要协调两个操作：
-    /// 1. 注销快捷键（释放系统资源）
-    /// 2. 删除数据
-    ///
-    /// 【顺序很重要】
-    /// 先注销快捷键，再删除数据
-    /// 为什么？如果先删除数据，快捷键回调可能找不到工具
+    /// Deletes persisted content before unregistering, so a failed delete retains the working binding.
     func deleteTool(id: ToolID) async throws {
-        // 【步骤 1】注销快捷键
-        hotKeyCoordinator.unregisterToolHotKey(for: id)
-
-        // 【步骤 2】删除数据
         try await repository.delete(id: id)
+        hotKeyCoordinator.unregisterToolHotKey(for: id)
     }
 
     /// 恢复默认工具
@@ -310,7 +288,8 @@ final class PromptToolCoordinator {
     /// 【错误处理】
     /// - 工具不存在：抛出 CoordinatorError.toolNotFound
     /// - 执行失败：抛出 Use Case 的错误
-    func executeTool(id: ToolID) async throws {
+    @discardableResult
+    func executeTool(id: ToolID, input: String? = nil, autoPaste: Bool = true) async throws -> String {
         // 【步骤 1】查找工具
         // guard let 模式：早期返回，避免嵌套
         guard let tool = try await repository.find(by: id) else {
@@ -321,7 +300,7 @@ final class PromptToolCoordinator {
         // 【步骤 2】委托给 Use Case 执行
         // 注意：Coordinator 不关心执行的细节
         // 所有业务逻辑都在 Use Case 中
-        _ = try await executeToolUseCase.execute(tool: tool)
+        return try await executeToolUseCase.execute(tool: tool, input: input, autoPaste: autoPaste)
     }
 
     // MARK: - Initialization（初始化流程）
@@ -456,7 +435,7 @@ final class PromptToolCoordinator {
                     }
                 }
             } catch {
-                print("⚠️ 跳过 Tool 快捷键注册失败：\\(tool.name) (\\(error.localizedDescription))")
+                print("⚠️ 跳过 Tool 快捷键注册失败：\(tool.name) (\(error.localizedDescription))")
             }
         }
     }

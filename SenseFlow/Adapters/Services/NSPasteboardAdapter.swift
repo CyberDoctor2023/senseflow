@@ -113,7 +113,7 @@ final class NSPasteboardAdapter: ClipboardReader, ClipboardWriter {
     /// 3. 保存到历史记录
     /// 4. 用户看到重复的历史记录
     ///
-    /// 解决方案：写入前暂停监听 1.5 秒
+    /// 解决方案：写入结束后确认剪贴板 changeCount
     private let monitor: ClipboardMonitor
 
     /// 构造器注入
@@ -211,9 +211,6 @@ final class NSPasteboardAdapter: ClipboardReader, ClipboardWriter {
     /// 如果不清空，可能会有多种类型的内容混在一起
     func write(_ text: String) async {
         await MainActor.run {
-            // 【步骤 1】忽略下一次剪贴板变化
-            // 避免写入触发剪贴板变化事件
-            monitor.ignoreNextChange()
 
             // 【步骤 2】获取系统剪贴板
             let pasteboard = NSPasteboard.general
@@ -223,6 +220,7 @@ final class NSPasteboardAdapter: ClipboardReader, ClipboardWriter {
 
             // 【步骤 4】写入新内容
             pasteboard.setString(text, forType: .string)
+            monitor.acknowledgeInternalWrite()
         }
     }
 
@@ -236,8 +234,6 @@ final class NSPasteboardAdapter: ClipboardReader, ClipboardWriter {
     /// 这是类型安全的，编译器会检查是否处理了所有情况
     func write(_ content: ClipboardContent) async {
         await MainActor.run {
-            // 忽略下一次剪贴板变化
-            monitor.ignoreNextChange()
 
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
@@ -251,7 +247,7 @@ final class NSPasteboardAdapter: ClipboardReader, ClipboardWriter {
 
             case .image(let data):
                 // 写入图片（TIFF 格式）
-                pasteboard.setData(data, forType: .tiff)
+                if let image = NSImage(data: data) { pasteboard.writeObjects([image]) }
 
             case .file(let url):
                 // 写入文件 URL
@@ -261,6 +257,7 @@ final class NSPasteboardAdapter: ClipboardReader, ClipboardWriter {
                 // 空内容：不写入任何东西
                 break
             }
+            monitor.acknowledgeInternalWrite()
         }
     }
 }

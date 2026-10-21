@@ -10,6 +10,11 @@ import SwiftUI
 
 /// Design constants and style parameters - Aligned with Apple Landmarks patterns
 struct Constants {
+    /// Shared raised-state feedback for cards and category controls.
+    enum SelectionFeedback {
+        static let scale: CGFloat = 1.04
+        static let duration: Double = 0.28
+    }
     // MARK: - Window and Container Constants
 
     /// Clipboard list window - floating panel with Liquid Glass
@@ -34,7 +39,7 @@ struct Constants {
         static let minWidth: CGFloat = 600
         static let minHeight: CGFloat = 500
         static let defaultWidth: CGFloat = 850
-        static let defaultHeight: CGFloat = 500
+        static let defaultHeight: CGFloat = 620
         static let cornerRadius: CGFloat = 20
     }
 
@@ -236,13 +241,6 @@ struct Constants {
     struct TextEditor {
         static let height: CGFloat = 100
         static let minHeight: CGFloat = 150
-    }
-
-    struct Onboarding {
-        static let iconSize: CGFloat = 32
-        static let topPadding: CGFloat = 32
-        static let bottomPadding: CGFloat = 24
-        static let horizontalPadding: CGFloat = 32
     }
 
     // MARK: - Border and Stroke Constants

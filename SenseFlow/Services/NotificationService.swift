@@ -85,21 +85,6 @@ class NotificationService {
         return isAuthorized(settings.authorizationStatus)
     }
 
-    /// 检查通知权限状态（同步属性）
-    /// - Note: 使用缓存状态，可能不是最新值
-    var hasPermission: Bool {
-        var status: UNAuthorizationStatus = .notDetermined
-        let semaphore = DispatchSemaphore(value: 0)
-
-        center.getNotificationSettings { settings in
-            status = settings.authorizationStatus
-            semaphore.signal()
-        }
-
-        semaphore.wait()
-        return isAuthorized(status)
-    }
-
     /// 显示通知
     /// - Parameters:
     ///   - title: 标题
@@ -165,7 +150,7 @@ class NotificationService {
     private func showPermissionAlert() {
         let alert = NSAlert()
         alert.messageText = "通知权限未授予"
-        alert.informativeText = "系统已记录你之前的选择，macOS 不会重复弹出通知授权。请在系统设置中手动开启 SenseFlow 的通知权限。"
+        alert.informativeText = "系统已记录你之前的选择，macOS 不会重复弹出通知授权。请在系统设置中手动开启 senseflow 的通知权限。"
         alert.alertStyle = .informational
         alert.addButton(withTitle: "打开系统设置")
         alert.addButton(withTitle: "稍后")
@@ -246,13 +231,10 @@ final class SystemPermissionStatusProvider: PermissionStatusProviding {
     }
 }
 
-/// 权限状态协调器（共享给 Onboarding/Settings）
-/// - Onboarding: 高频轮询（交互期）
-/// - Settings: 事件驱动刷新（应用重新激活时）
+/// Settings permission status refreshes when the app becomes active, without polling.
 @MainActor
 final class PermissionStatusCoordinator: ObservableObject {
     enum Consumer {
-        case onboarding
         case settings
     }
 
@@ -261,9 +243,7 @@ final class PermissionStatusCoordinator: ObservableObject {
     @Published private(set) var snapshot: PermissionStatusSnapshot = .empty
 
     private let provider: PermissionStatusProviding
-    private var timer: Timer?
     private var appDidBecomeActiveObserver: NSObjectProtocol?
-    private var onboardingSubscribers = 0
     private var settingsSubscribers = 0
     private var isRefreshing = false
 
@@ -274,8 +254,6 @@ final class PermissionStatusCoordinator: ObservableObject {
     /// 订阅权限状态（进入页面时调用）
     func start(consumer: Consumer) {
         switch consumer {
-        case .onboarding:
-            onboardingSubscribers += 1
         case .settings:
             settingsSubscribers += 1
         }
@@ -287,8 +265,6 @@ final class PermissionStatusCoordinator: ObservableObject {
     /// 取消订阅权限状态（离开页面时调用）
     func stop(consumer: Consumer) {
         switch consumer {
-        case .onboarding:
-            onboardingSubscribers = max(0, onboardingSubscribers - 1)
         case .settings:
             settingsSubscribers = max(0, settingsSubscribers - 1)
         }
@@ -312,40 +288,17 @@ final class PermissionStatusCoordinator: ObservableObject {
     }
 
     private var hasSubscribers: Bool {
-        onboardingSubscribers > 0 || settingsSubscribers > 0
+        settingsSubscribers > 0
     }
 
     private func configureRefreshStrategy() {
         if !hasSubscribers {
-            stopTimer()
             removeAppActiveObserver()
             return
         }
 
         ensureAppActiveObserver()
 
-        if onboardingSubscribers > 0 {
-            startTimerIfNeeded(interval: BusinessRules.Permissions.checkInterval)
-        } else {
-            stopTimer()
-        }
-    }
-
-    private func startTimerIfNeeded(interval: TimeInterval) {
-        guard timer == nil else { return }
-        let created = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.refreshNow()
-            }
-        }
-        // 为系统调度留出余量，降低能耗
-        created.tolerance = max(0.1, interval * 0.2)
-        timer = created
-    }
-
-    private func stopTimer() {
-        timer?.invalidate()
-        timer = nil
     }
 
     private func ensureAppActiveObserver() {

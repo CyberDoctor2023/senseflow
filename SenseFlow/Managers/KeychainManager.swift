@@ -9,22 +9,8 @@ import Foundation
 import Security
 import CryptoKit
 
-/// Keychain 管理器（单例）
-/// 采用 Deck 策略：Keychain 只存储 1 个主加密密钥，所有 API Keys 加密后存 UserDefaults
-///
-/// ## 架构设计
-/// - **Keychain**: 只存储 1 个 AES-256 主密钥 → 只需授权 1 次
-/// - **UserDefaults**: 存储加密后的 API Keys → 无需授权，快速访问
-/// - **内存缓存**: 缓存解密后的 keys 和主密钥 → 减少重复解密
-///
-/// ## 优势
-/// 1. **减少授权提示**: Keychain 访问从 7 次减少到 1 次（只读取主密钥）
-/// 2. **Debug 友好**: 即使重新签名，也只需授权 1 次
-/// 3. **性能优化**: UserDefaults 访问比 Keychain 快，支持批量操作
-/// 4. **安全性**: 数据仍然加密存储，主密钥受 Keychain 保护
-///
-/// ## 数据迁移
-/// 首次启动时自动检测旧的 Keychain 存储，迁移到新的加密存储
+/// Stores an AES master key in Keychain and encrypted provider keys in preferences.
+/// Passive reads never request authentication; only explicit settings actions may unlock.
 class KeychainManager {
 
     // MARK: - Singleton
@@ -63,21 +49,25 @@ class KeychainManager {
 
     /// 主密钥缓存（避免重复访问 Keychain）
     private var cachedMasterKey: SymmetricKey?
+    private let masterKeyAccessLock = NSRecursiveLock()
     private let masterKeyQueue = DispatchQueue(label: "com.senseflow.keychain.masterkey")
 
     // MARK: - Initialization
 
-    private init() {
-        // 首次启动时检查是否需要迁移数据
-        // 先迁移主密钥，再迁移 API keys
-        migrateMasterKeyIfNeeded()
-        migrateFromLegacyKeychainIfNeeded()
+    // Construction must not read, migrate, write or delete credentials.
+    private init() {}
+
+    /// Settings can display already-unlocked values without touching the security subsystem.
+    func cachedValue(account: String) -> String? {
+        cacheQueue.sync { cache[account] }
     }
 
     // MARK: - Master Key Management
 
     /// 获取或创建主加密密钥
-    private func getMasterKey() -> SymmetricKey? {
+    private func getMasterKey(allowsAuthentication: Bool = false, createIfMissing: Bool = false) -> SymmetricKey? {
+        masterKeyAccessLock.lock()
+        defer { masterKeyAccessLock.unlock() }
         // 先检查内存缓存
         let cached = masterKeyQueue.sync { cachedMasterKey }
         if let cached = cached {
@@ -85,13 +75,20 @@ class KeychainManager {
         }
 
         // 尝试从 Keychain 读取
-        if let keyData = getMasterKeyFromKeychain() {
+        let lookup = readMasterKeyFromKeychain(allowsAuthentication: allowsAuthentication)
+        if let keyData = lookup.data {
             let key = SymmetricKey(data: keyData)
             masterKeyQueue.sync {
                 cachedMasterKey = key
             }
             return key
         }
+
+        // Denied, locked, or otherwise unavailable credentials are not missing credentials.
+        guard lookup.status == errSecItemNotFound, createIfMissing,
+              !UserDefaults.standard.dictionaryRepresentation().contains(where: {
+                  $0.key.hasPrefix(encryptedKeyPrefix) && $0.value is Data
+              }) else { return nil }
 
         // 生成新密钥
         let key = SymmetricKey(size: .bits256)
@@ -107,38 +104,30 @@ class KeychainManager {
         return nil
     }
 
-    /// 从 Keychain 读取主密钥
-    private func getMasterKeyFromKeychain(service: String? = nil) -> Data? {
+    private func readMasterKeyFromKeychain(service: String? = nil, allowsAuthentication: Bool = true) -> (data: Data?, status: OSStatus) {
         let serviceIdentifier = service ?? keychainService
-        let query: [String: Any] = [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceIdentifier,
             kSecAttrAccount as String: keychainAccount,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
+        if !allowsAuthentication { query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail }
 
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
 
         if status == errSecSuccess {
-            return result as? Data
+            return (result as? Data, status)
         }
 
-        return nil
+        return (nil, status)
     }
 
     /// 保存主密钥到 Keychain
     private func saveMasterKeyToKeychain(_ keyData: Data, service: String? = nil) -> Bool {
         let serviceIdentifier = service ?? keychainService
-        // 先删除已存在的
-        let deleteQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceIdentifier,
-            kSecAttrAccount as String: keychainAccount
-        ]
-        SecItemDelete(deleteQuery as CFDictionary)
-
         // 保存新密钥
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -150,26 +139,16 @@ class KeychainManager {
 
         let status = SecItemAdd(query as CFDictionary, nil)
 
-        if status == errSecSuccess {
-            print("✅ 主加密密钥已保存到 Keychain")
-            return true
-        } else {
-            print("⚠️ 保存主密钥失败，尝试 fallback: \(status)")
-            // Fallback: 不带 accessibility 属性
-            let fallbackQuery: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: serviceIdentifier,
-                kSecAttrAccount as String: keychainAccount,
-                kSecValueData as String: keyData
-            ]
-            let fallbackStatus = SecItemAdd(fallbackQuery as CFDictionary, nil)
-            if fallbackStatus == errSecSuccess {
-                print("✅ 主加密密钥已保存（fallback）")
-                return true
-            }
-            print("❌ Fallback 也失败: \(fallbackStatus)")
-            return false
-        }
+        return status == errSecSuccess
+    }
+
+    /// Unlocks existing credentials only after an explicit user action. Never creates a key.
+    func unlockSavedCredentials() -> Bool {
+        migrateMasterKeyIfNeeded()
+        migrateFromLegacyKeychainIfNeeded()
+        guard getMasterKey(allowsAuthentication: true) != nil else { return false }
+        _ = getAllSettingsKeys()
+        return true
     }
 
     /// 从 Keychain 删除指定 service 的条目
@@ -186,7 +165,7 @@ class KeychainManager {
 
     /// 加密数据
     private func encrypt(_ plaintext: String) -> Data? {
-        guard let key = getMasterKey() else {
+        guard let key = getMasterKey(allowsAuthentication: true, createIfMissing: true) else {
             print("❌ 无法获取主密钥")
             return nil
         }
@@ -457,13 +436,15 @@ class KeychainManager {
     /// 从 com.aiclipboard.masterkey 迁移到 com.senseflow.masterkey
     private func migrateMasterKeyIfNeeded() {
         // 检查是否已经有新的主密钥
-        if getMasterKeyFromKeychain(service: keychainService) != nil {
+        let existing = readMasterKeyFromKeychain(service: keychainService, allowsAuthentication: false)
+        if existing.data != nil {
             print("ℹ️ [Migration] 主密钥已存在于新位置，跳过迁移")
             return
         }
+        guard existing.status == errSecItemNotFound else { return }
 
         // 尝试从旧位置读取主密钥
-        guard let oldKeyData = getMasterKeyFromKeychain(service: legacyMasterKeyService) else {
+        guard let oldKeyData = readMasterKeyFromKeychain(service: legacyMasterKeyService, allowsAuthentication: false).data else {
             print("ℹ️ [Migration] 未发现旧主密钥，跳过迁移")
             return
         }
@@ -505,7 +486,12 @@ class KeychainManager {
         var migratedCount = 0
 
         for account in allKeys {
-            if let oldValue = readFromLegacyKeychain(account: account) {
+            let legacy = readFromLegacyKeychain(account: account)
+            guard legacy.status == errSecSuccess || legacy.status == errSecItemNotFound else { return }
+            if let oldValue = legacy.value {
+                // Startup migration must not prompt through encryption's master-key lookup.
+                // A successful passive read populates the same cache used by save below.
+                guard getMasterKey(allowsAuthentication: false, createIfMissing: true) != nil else { return }
                 // 保存到新的加密存储
                 if save(key: oldValue, for: account) {
                     migratedCount += 1
@@ -513,7 +499,7 @@ class KeychainManager {
 
                     // 删除旧的 Keychain 条目
                     deleteFromLegacyKeychain(account: account)
-                }
+                } else { return }
             }
         }
 
@@ -528,23 +514,24 @@ class KeychainManager {
     }
 
     /// 从旧的 Keychain 读取数据
-    private func readFromLegacyKeychain(account: String) -> String? {
+    private func readFromLegacyKeychain(account: String) -> (value: String?, status: OSStatus) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: legacyKeychainService,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail
         ]
 
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
 
         if status == errSecSuccess, let data = result as? Data {
-            return String(data: data, encoding: .utf8)
+            return (String(data: data, encoding: .utf8), status)
         }
 
-        return nil
+        return (nil, status)
     }
 
     /// 从旧的 Keychain 删除数据

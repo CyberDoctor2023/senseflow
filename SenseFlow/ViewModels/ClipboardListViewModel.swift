@@ -1,67 +1,172 @@
-//
-//  ClipboardListViewModel.swift
-//  SenseFlow
-//
-//  Created on 2026-02-05.
-//
-
 import SwiftUI
-import Combine
 
-/// 剪贴板列表视图模型
-class ClipboardListViewModel: ObservableObject {
+/// Presentation-only categories; code remains losslessly stored as text.
+enum ClipboardContentFilter: String, CaseIterable { case text, image, code, screenshot, recording }
 
-    // MARK: - Published Properties
+/// Owns refresh/search generations. Older results can never replace a newer query.
+@MainActor final class ClipboardListViewModel: ObservableObject {
+    private var loadedItems: [ClipboardItem] = [] {
+        didSet { rebuildVisibleItems() }
+    }
+    @Published private(set) var selectedType: ClipboardContentFilter? {
+        didSet { rebuildVisibleItems() }
+    }
+    @Published private(set) var items: [ClipboardItem] = []
 
-    @Published var items: [ClipboardItem] = []
-    @Published var searchQuery: String = ""
-
-    // MARK: - Private Properties
-
+    /// Derives presentation once per page/filter update, never during card body evaluation.
+    private func rebuildVisibleItems() {
+        if let selectedType { items = loadedItems.filter { Self.matches($0, filter: selectedType) } }
+        else { items = loadedItems }
+    }
+    private static func matches(_ item: ClipboardItem, filter: ClipboardContentFilter) -> Bool {
+        switch filter {
+        case .text: return item.type == .text
+        case .image: return item.type == .image
+        case .code: return item.type == .text && looksLikeCode(item.textContent ?? "")
+        case .screenshot: return item.captureKind == .screenshot
+        case .recording: return item.type == .video && item.captureKind == .recording
+        }
+    }
+    private static func looksLikeCode(_ text: String) -> Bool {
+        let sample = String(text.prefix(2048))
+        if sample.contains("```") { return true }
+        let lines = sample.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+        let declarations = ["import ", "func ", "def ", "class ", "struct ", "let ", "const ", "function ", "var ", "SELECT ", "#!/"]
+        if lines.contains(where: { line in declarations.contains(where: line.hasPrefix) }) { return true }
+        return lines.filter { $0.contains(";") || $0.contains("{") || $0.contains("}") }.count >= 2
+    }
+    @Published private(set) var errorMessage: String?
+    @Published private(set) var isLoading = false
+    @Published private(set) var isLoadingMore = false
+    private var hasMore = false
+    private let pageSize = 200
+    @Published var searchQuery = "" {
+        didSet {
+            guard searchQuery != oldValue else { return }
+            invalidate()
+            debounceTask = Task { [weak self] in
+                do { try await Task.sleep(nanoseconds: 300_000_000) } catch { return }
+                await self?.refresh()
+            }
+        }
+    }
+    @Published var isWindowPinned = false {
+        didSet {
+            guard isWindowPinned != oldValue else { return }
+            generation += 1
+            pageTask?.cancel(); pageTask = nil; isLoadingMore = false
+            debounceTask?.cancel(); refreshTask?.cancel(); refreshTask = nil; activeQuery = nil; pendingHistoryRefresh = false
+            isLoading = false
+            if !isWindowPinned { Task { [weak self] in await self?.loadItems() } }
+        }
+    }
+    let actions: HistoryActionCoordinator
+    let thumbnails: ClipboardThumbnailLoader
     private let repository: ClipboardRepositoryProtocol
-    private var cancellables = Set<AnyCancellable>()
-    private let defaultItemLimit = 200  // 消除魔法数字
+    private var debounceTask: Task<Void, Never>?
+    private var refreshTask: Task<Void, Never>?
+    private var pageTask: Task<Void, Never>?
+    private var generation = 0
+    private var activeQuery: String?
+    private var pendingHistoryRefresh = false
 
-    // MARK: - Initialization
-
-    init(repository: ClipboardRepositoryProtocol) {
-        self.repository = repository
-        setupSearchObserver()
+    init(repository: ClipboardRepositoryProtocol, actions: HistoryActionCoordinator, thumbnails: ClipboardThumbnailLoader) {
+        self.repository = repository; self.actions = actions; self.thumbnails = thumbnails
     }
-
-    // MARK: - Private Methods
-
-    private func setupSearchObserver() {
-        $searchQuery
-            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
-            .sink { [weak self] query in
-                Task {
-                    await self?.performSearch(query: query)
+    private func invalidate() {
+        generation += 1
+        pageTask?.cancel(); pageTask = nil; isLoadingMore = false
+        debounceTask?.cancel(); refreshTask?.cancel(); refreshTask = nil; activeQuery = nil; pendingHistoryRefresh = false
+        actions.documents.historyChanged()
+    }
+    /// Toggles a content filter while preserving any draft excluded by the new filter.
+    func selectType(_ type: ClipboardContentFilter) async {
+        let next: ClipboardContentFilter? = selectedType == type ? nil : type
+        if let next, let source = actions.documents.source,
+           let item = loadedItems.first(where: { $0.id == source.itemID }), !Self.matches(item, filter: next) {
+            guard await actions.documents.prepareToClose() else { return }
+        }
+        actions.documents.historyChanged()
+        selectedType = next
+        if items.isEmpty { await loadMoreIfNeeded(after: nil) }
+    }
+    /// Hiding a selected category returns to all history without mutating stored records.
+    func clearHiddenFilter(_ visible: [ClipboardContentFilter]) async {
+        if let selectedType, !visible.contains(selectedType) { await selectType(selectedType) }
+    }
+    /// Appends bounded summaries only when the last visible card is reached; pinned history never changes.
+    func loadMoreIfNeeded(after itemID: Int64?) async {
+        guard !isWindowPinned, !isLoading, !isLoadingMore, hasMore,
+              itemID == items.last?.id else { return }
+        let token = generation
+        let query = searchQuery
+        let visibleCount = items.count
+        isLoadingMore = true
+        pageTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                repeat {
+                    let offset = loadedItems.count
+                    let page = query.isEmpty
+                        ? try await repository.fetchRecent(limit: pageSize, offset: offset)
+                        : try await repository.search(query: query, limit: pageSize, offset: offset)
+                    guard !Task.isCancelled, token == generation, !isWindowPinned, query == searchQuery else { return }
+                    loadedItems.append(contentsOf: page)
+                    hasMore = page.count == pageSize
+                    errorMessage = nil
+                } while hasMore && items.count == visibleCount
+            } catch {
+                guard token == generation, !Task.isCancelled else { return }
+                errorMessage = "历史加载失败：\(error.localizedDescription)"
+            }
+            guard token == generation else { return }
+            isLoadingMore = false
+            pageTask = nil
+        }
+        await pageTask?.value
+    }
+    func loadItems() async { debounceTask?.cancel(); await refresh() }
+    func performSearch(query: String) async { searchQuery = query; debounceTask?.cancel(); await refresh() }
+    /// Coalesces writes without losing a change that arrives after an in-flight SQL snapshot.
+    func historyDidChange() {
+        guard !isWindowPinned else { return }
+        pendingHistoryRefresh = true
+        debounceTask?.cancel()
+        _ = startRefresh()
+    }
+    private func refresh() async { await startRefresh()?.value }
+    private func startRefresh() -> Task<Void, Never>? {
+        guard !isWindowPinned else { return nil }
+        let query = searchQuery
+        if activeQuery == query, let refreshTask { return refreshTask }
+        generation += 1
+        pageTask?.cancel(); pageTask = nil; isLoadingMore = false
+        let token = generation
+        activeQuery = query
+        isLoading = true
+        let task = Task { [weak self] in
+            guard let self else { return }
+            repeat {
+                pendingHistoryRefresh = false
+                do {
+                    let result = query.isEmpty
+                        ? try await repository.fetchRecent(limit: pageSize, offset: 0)
+                        : try await repository.search(query: query, limit: pageSize, offset: 0)
+                    guard !Task.isCancelled, !isWindowPinned, token == generation, query == searchQuery else { return }
+                    loadedItems = result
+                    hasMore = result.count == pageSize
+                    errorMessage = nil
+                } catch {
+                    guard !Task.isCancelled, token == generation else { return }
+                    errorMessage = "历史加载失败：\(error.localizedDescription)"
                 }
-            }
-            .store(in: &cancellables)
-    }
-
-    // MARK: - Public Methods
-
-    func loadItems() async {
-        let items = await repository.fetchRecent(limit: defaultItemLimit)
-        await MainActor.run {
-            withAnimation(.smooth(duration: 0.3)) {
-                self.items = items
-            }
+            } while pendingHistoryRefresh
+            guard !Task.isCancelled, token == generation else { return }
+            isLoading = false
+            refreshTask = nil; activeQuery = nil
+            if items.isEmpty { await loadMoreIfNeeded(after: nil) }
         }
-    }
-
-    func performSearch(query: String) async {
-        let items = query.isEmpty
-            ? await repository.fetchRecent(limit: defaultItemLimit)
-            : await repository.search(query: query, limit: defaultItemLimit)
-
-        await MainActor.run {
-            withAnimation(.smooth(duration: 0.3)) {
-                self.items = items
-            }
-        }
+        refreshTask = task
+        return task
     }
 }

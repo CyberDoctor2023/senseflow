@@ -30,13 +30,10 @@ final class SystemContextCollector: ContextCollector {
         self.frontmostApplicationResolver = frontmostApplicationResolver ?? DefaultFrontmostApplicationResolver()
         self.clipboardSnapshotCollector = clipboardSnapshotCollector ?? DefaultClipboardSnapshotCollector()
         self.screenCapture = screenCapture
-        let resolvedLiveOverlayPresenter = liveOverlayPresenter ?? OpenClawUITreeLiveOverlayPresenter(
-            overlayRenderer: overlayRenderer
-        )
         self.screenshotCollector = screenshotCollector ?? DefaultScreenshotCollector(
             overlayAnnotationProvider: overlayAnnotationProvider,
             overlayRenderer: overlayRenderer,
-            liveOverlayPresenter: resolvedLiveOverlayPresenter
+            liveOverlayPresenter: liveOverlayPresenter ?? NoopUITreeLiveOverlayPresenter()
         )
     }
 

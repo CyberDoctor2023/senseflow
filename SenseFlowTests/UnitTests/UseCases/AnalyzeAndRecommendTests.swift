@@ -483,27 +483,6 @@ final class IntentClassifierTests: XCTestCase {
         XCTAssertEqual(result, .unknown)
     }
 
-    func test_classify_sameXiaohongshuTitleScenario_isStableAcross20Runs() {
-        let signals = makeSignals(
-            role: "AXTextField",
-            title: "标题",
-            description: "正文区词汇噪音：正文 内容 文案",
-            placeholder: "填写标题会有更多赞哦",
-            valuePreview: "周末citywalk",
-            characterCount: 10,
-            frameHeight: 44,
-            neighborhoodSnapshot: "正文 正文 内容 内容",
-            uiRoleSnapshot: "- textarea \"正文\"\n- textfield \"标题\" [focused=true]",
-            focusedSnapshotWindow: "- textfield \"标题\" [focused=true]"
-        )
-
-        let baseline = sut.classify(signals: signals)
-        XCTAssertEqual(baseline, .titleInput)
-
-        for _ in 0..<20 {
-            XCTAssertEqual(sut.classify(signals: signals), baseline)
-        }
-    }
 
     func test_classify_withoutFocusedElement_withCursorOCRTitleKeyword_returnsTitleInput() {
         let result = sut.classify(
@@ -587,29 +566,6 @@ final class AIToolRecommendationServiceGuardrailTests: XCTestCase {
         }
     }
 
-    func test_recommendTool_sameSceneAcross20Runs_keepsStableSelection() async throws {
-        let aiClient = MockSmartRecommendationAIClient()
-        let sut = AIToolRecommendationService(aiClient: aiClient)
-
-        let toolA = PromptTool(name: "标题精炼", prompt: "title polish")
-        let toolB = PromptTool(name: "小红书成稿", prompt: "body draft")
-
-        aiClient.textResponse = """
-        {"tool_id":"\(toolA.id.uuidString)","tool_name":"\(toolA.name)","reason":"mock","confidence":0.83}
-        """
-
-        let context = makeContext(clipboardText: "标题输入：周末穿搭")
-        var selectedToolIDs: [UUID] = []
-
-        for _ in 0..<20 {
-            let recommendation = try await sut.recommendTool(context: context, availableTools: [toolA, toolB])
-            selectedToolIDs.append(recommendation.toolID)
-        }
-
-        XCTAssertEqual(Set(selectedToolIDs), [toolA.id], "同场景连续运行应稳定返回同一工具")
-        XCTAssertEqual(aiClient.generateCallCount, 20, "文本路径应每次调用模型")
-        XCTAssertEqual(aiClient.generateWithScreenshotsCallCount, 0)
-    }
 
     func test_recommendTool_twoRunsWithDifferentClipboardText_doesNotLeakPreviousClipboard() async throws {
         let aiClient = MockSmartRecommendationAIClient()

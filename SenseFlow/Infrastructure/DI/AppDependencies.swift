@@ -21,7 +21,7 @@ import Foundation
 /// - ✅ 旧的 Manager 类（迁移期间）
 /// - ❌ SwiftUI 视图（应该使用 @EnvironmentObject）
 /// - ❌ 新代码（应该使用构造器注入）
-class AppDependencies {
+@MainActor final class AppDependencies {
     private static var _shared: AppDependencies?
 
     /// 获取共享实例
@@ -52,6 +52,11 @@ class AppDependencies {
 
     var smartToolCoordinator: SmartToolCoordinator {
         container.smartToolCoordinator
+    }
+
+    /// Copies a retained tool result through the shared writer without executing the tool again.
+    func copyToolResult(_ text: String) async {
+        await container.clipboardWriter.write(text)
     }
 
     private init(container: DependencyContainer) {

@@ -10,12 +10,8 @@ import Foundation
 
 /// UserDefaults 键名 - 避免拼写错误
 enum UserDefaultsKeys {
-    // Onboarding
-    static let skipOnboardingPermissions = "skipOnboardingPermissions"
 
     // Settings
-    static let historyLimit = "history_limit"
-    static let autoPasteEnabled = "auto_paste_enabled"
     static let launchAtLogin = "launch_at_login"
     static let autoDeleteEnabled = "auto_delete_enabled"
     static let autoDeleteDays = "auto_delete_days"
