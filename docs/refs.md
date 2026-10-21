@@ -616,3 +616,47 @@ Apple Doc MCP核对withAnimation(_:completionCriteria:_:completion:)在所有动
 - 2026-10-14 输入诊断：Apple Doc MCP AppKit 查询确认 [addLocalMonitorForEvents(matching:handler:)](https://developer.apple.com/documentation/appkit/nsevent/addlocalmonitorforevents(matching:handler:)) 接收应用派发前与指定 mask 匹配的事件；[EventTypeMask.keyDown](https://developer.apple.com/documentation/appkit/nsevent/eventtypemask/keydown) 是键盘按下事件掩码。因此 Escape 分支必须将 keyDown 纳入订阅，不能只实现 handler 分支。文档不保证原生拖放的嵌套事件循环必定经过该 monitor，仍需运行验证。
 
 - 2026-10-15 工具目标反馈：Apple Doc MCP SwiftUI 查询 GlassEffectContainer、Glass.interactive、Glass.tint、Animation.snappy、glassEffectTransition；并查官方 [Applying Liquid Glass to custom views](https://developer.apple.com/documentation/SwiftUI/Applying-Liquid-Glass-to-custom-views)。容器支持多个玻璃形状融合/形变，interactive 配置交互，tint 配置颜色，snappy 为短促、少量弹性的预设弹簧。用户要求删去自画凸起；采用圆角矩形和唯一圆球的原生材质强调与弹簧反馈。靠近阈值和放大比例是产品参数，不是 Apple 磁性拖放预设。
+### 中央工具区与非破坏性密钥读取（2026-10-15）
+
+- Apple Doc MCP：NSWindow.addChildWindow(_:ordered:)，子窗口归属，https://developer.apple.com/documentation/appkit/nswindow/addchildwindow(_:ordered:) 。中央工具区使用父子窗口关系参与内部拖放，而不按 key window 判定目标。
+- Apple Doc MCP：kSecUseAuthenticationUIFail 表示不允许用户认证，https://developer.apple.com/documentation/security/ksecuseauthenticationuifail 。用于后续后台探测设计参考；本批没有全局禁止明确操作的授权。
+- 钥匙串读取保留返回状态；用户拒绝与 errSecItemNotFound 的处理不同，不以拒绝读取为删除/生成替代主密钥的依据。
+
+- 2026-10-15 Apple Doc MCP：[`NSView.visibleRect`](https://developer.apple.com/documentation/appkit/nsview/visiblerect) 是未被祖先裁切的视图区域；[`isHiddenOrHasHiddenAncestor`](https://developer.apple.com/documentation/appkit/nsview/ishiddenorhashiddenancestor) 包括祖先隐藏。中央工具拖放以可见区域作为几何边界。
+- 2026-10-15 Apple Doc MCP：[`NSDraggingInfo.draggingLocation`](https://developer.apple.com/documentation/appkit/nsdragginginfo/dragginglocation) 是目的窗口基坐标下的鼠标位置；工具最终释放以该坐标转换后的屏幕位置重新选中。
+- 2026-10-15 Apple Doc MCP：[`NSPasteboard.changeCount`](https://developer.apple.com/documentation/appkit/nspasteboard/changecount) 是剪贴板变更计数；延迟填入在发送 Cmd+V 前校验，防止粘贴期间被替换的内容。
+- 2026-10-15 Apple Doc MCP：[`GlassEffectTransition.materialize`](https://developer.apple.com/documentation/swiftui/glasseffecttransition/materialize) 在macOS26+提供材质与内容出入过渡，不匹配其他玻璃几何；本次用于中央工具区呈现，不作为跨窗口融合证据。
+
+## 2026-10-15 权限 onboarding 案例调研
+- Apple: https://support.apple.com/en-mn/guide/mac-help/mh43185/mac — 授权在真实系统设置中由用户完成。
+- Wispr Flow: https://docs.wisprflow.ai/articles/7682075140-how-to-install-wispr-flow-on-mac — 用“允许插入文字”解释辅助权限，授权后检查并推进设置步骤；文档没有证明其窗口贴靠实现。
+- OpenAI: https://help-lb.openai.com/en/articles/10119604-work-with-apps-on-macos — 官方确认使用 macOS Accessibility；未公开用户所述并排引导的实现细节。
+- 设计推论：真实系统设置 + senseflow 自己的同风格伴随指引；不将示意截图冒充可操作系统界面。紧贴系统设置窗口的定位机制仍需 Apple API 研究与未授权场景实测，不能宣称已实现。
+
+## 2026-10-18 辅助功能引导
+- 交互参考（非官方实现，仅参考行为）：https://github.com/riko2chen/AskForPermission 与 docs/architecture.md；未引入其私有 TCC SPI。
+- Apple CGWindowListCopyWindowInfo：https://developer.apple.com/documentation/coregraphics/cgwindowlistcopywindowinfo(_:_:)，Apple Doc MCP 返回 404，改用官方网页。
+- Apple NSPanel：https://developer.apple.com/documentation/appkit/nspanel 。
+- 2026-10-18：按用户要求直接使用 AskForPermission，本地原样源码 Vendor/AskForPermission；固定 revision 91f4dde33f9f5dd58a89d72f3f05aa4b149a1f0e，MIT 授权。API 参考 https://github.com/riko2chen/AskForPermission/blob/main/docs/api.md 。
+
+- 2026-10-18 授权接续：Apple AXIsProcessTrusted（当前进程辅助功能信任状态；不据此假定授权一定要求重启）：https://developer.apple.com/documentation/applicationservices/1460720-axisprocesstrusted 。Apple Doc MCP ApplicationServices 检索未命中，改查 Apple 官方页面。
+- 2026-10-18 首次背景点击：Apple SwiftUI allowsWindowActivationEvents() 允许手势处理激活所属窗口的事件：https://developer.apple.com/documentation/swiftui/view/allowswindowactivationevents() 。用于历史背景首击关闭预览，不模拟第二次点击。
+
+### Onboarding 屏幕统一定位（2026-10-18）
+透明提示复用 AppKit child window，位置按当前 NSScreen.visibleFrame 计算，避免以底部剪贴板的局部高度作为屏幕中心。Apple 文档：https://developer.apple.com/documentation/appkit/nswindow/addchildwindow(_:ordered:) 、https://developer.apple.com/documentation/appkit/nsscreen/visibleframe 。本轮沿用现有 AppKit API；Apple Doc MCP 未完成查询，使用官方网页回查。
+
+- 2026-10-19 onboarding排版复核：[Apple Onboarding](https://developer.apple.com/design/human-interface-guidelines/onboarding)、[Typography](https://developer.apple.com/design/human-interface-guidelines/typography)。就近交互提示；字号、字重和颜色共同建立层次，避免过细字重。官方.md已读取；项目参数不宣称为官方预设。
+
+- 2026-10-19 原生拖移缩略图：Apple Doc MCP AppKit `NSDraggingItem.setDraggingFrame(_:contents:)` https://developer.apple.com/documentation/appkit/nsdraggingitem/setdraggingframe(_:contents:) 自定义拖移图像与尺寸；`NSDragOperation.copy` https://developer.apple.com/documentation/appkit/nsdragoperation/copy 表示目标可复制载荷。统一使用系统拖移会话，不绘制伪加号。
+
+- Esc 退出确认采用 AppKit 窗口附属 sheet：https://developer.apple.com/documentation/appkit/nsalert/beginsheetmodal(for:completionhandler:) （Apple Doc MCP 核实）。
+
+- 2026-10-19 Security Apple Doc MCP 核实 `kSecUseAuthenticationUIFail` 禁止交互认证，`errSecInteractionNotAllowed` 是不可交互状态，不等于凭证不存在：https://developer.apple.com/documentation/security/ksecuseauthenticationuifail 、https://developer.apple.com/documentation/security/errsecinteractionnotallowed 。设置/后台读取使用无交互查询，显式解锁才允许系统认证。
+
+- Codex 凭证更新使用 Security `SecItemUpdate`，Apple Doc MCP：https://developer.apple.com/documentation/security/secitemupdate(_:_:) 。已有条目更新失败时不删除旧凭证。
+
+- 2026-10-19 Apple Doc MCP SwiftUI ImageRenderer：https://developer.apple.com/documentation/swiftui/imagerenderer ，支持将SwiftUI内容渲染为nsImage，拖起时单次生成原生拖移缩略图，避免宿主视图缓存截图为空。
+
+- 2026-10-19 AppKit `NSApplication.didBecomeActiveNotification`：应用完成激活后发送，用于显式凭证操作返回原设置窗口。Apple Doc MCP 已核对。https://developer.apple.com/documentation/appkit/nsapplication/didbecomeactivenotification
+
+- 2026-10-19 Apple TN3127：隐私授权通过 designated requirement 识别应用，开发与分发签名身份可能不共享权限。https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements

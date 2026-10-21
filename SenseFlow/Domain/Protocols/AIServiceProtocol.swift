@@ -27,6 +27,8 @@ protocol UserAPISettingsServiceProtocol {
     func updateCurrentServiceType(_ serviceType: AIServiceType)
 
     /// 批量读取所有 AI 服务 API Key（不包含 Langfuse）
+    /// Unlocks saved credentials only in response to a settings action.
+    func unlockSavedCredentials(for serviceType: AIServiceType) async -> Bool
     func loadAllAPIKeys() -> [AIServiceType: String]
 
     /// 读取单个服务 API Key

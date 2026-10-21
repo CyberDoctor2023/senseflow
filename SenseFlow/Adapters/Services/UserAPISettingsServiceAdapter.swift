@@ -21,21 +21,28 @@ final class UserAPISettingsServiceAdapter: UserAPISettingsServiceProtocol {
         aiService.currentServiceType = serviceType
     }
 
+    func unlockSavedCredentials(for serviceType: AIServiceType) async -> Bool {
+        await Task.detached {
+            if serviceType == .codex { return CodexAuthManager.shared.unlockSavedCredentials() }
+            return KeychainManager.shared.unlockSavedCredentials()
+        }.value
+    }
+
     func loadAllAPIKeys() -> [AIServiceType: String] {
-        let keys = keychainManager.getAllSettingsKeys()
-        return [
-            .openai: keys.openaiKey ?? "",
-            .codex: "",
-            .claude: keys.claudeKey ?? "",
-            .gemini: keys.geminiKey ?? "",
-            .deepseek: keys.deepseekKey ?? "",
-            .openrouter: keys.openrouterKey ?? "",
-            .ollama: ""
-        ]
+        Dictionary(uniqueKeysWithValues: AIServiceType.allCases.map { ($0, apiKey(for: $0)) })
     }
 
     func apiKey(for serviceType: AIServiceType) -> String {
-        keychainManager.getAPIKey(for: serviceType) ?? ""
+        let account: String
+        switch serviceType {
+        case .openai: account = KeychainManager.Keys.openaiAPIKey
+        case .claude: account = KeychainManager.Keys.claudeAPIKey
+        case .gemini: account = KeychainManager.Keys.geminiAPIKey
+        case .deepseek: account = KeychainManager.Keys.deepseekAPIKey
+        case .openrouter: account = KeychainManager.Keys.openrouterAPIKey
+        case .codex, .ollama: return ""
+        }
+        return keychainManager.cachedValue(account: account) ?? ""
     }
 
     @discardableResult

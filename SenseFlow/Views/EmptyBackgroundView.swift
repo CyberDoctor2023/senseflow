@@ -27,13 +27,6 @@ struct EmptyBackgroundView: View {
     @ObservedObject var viewModel: ClipboardListViewModel
     @FocusState private var isSearchFocused: Bool
     @Binding var isExpanded: Bool  // 由父视图控制
-    var toolRestingOffset: CGFloat
-    @State private var tools: [PromptTool] = []
-    @State private var toolRevision = UUID()
-    @State private var hoveredTool: UUID?
-    @State private var targetedTool: UUID?
-    @State private var runningTool: UUID?
-    @State private var toolError: String?
     @State private var hoveredHint: String?
     @Namespace private var glassNamespace
     @Environment(\.clipboardOnboarding) private var onboarding
@@ -92,18 +85,6 @@ struct EmptyBackgroundView: View {
                 staticBody
             }
         }
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: showsTools)
-        .animation(reduceMotion ? nil : .spring(duration: 0.28, bounce: 0.12), value: toolsEngaged)
-        .task(id: toolRevision) { await reloadTools() }
-        .onReceive(NotificationCenter.default.publisher(for: .promptToolsDidUpdate).receive(on: RunLoop.main)) { _ in
-            toolRevision = UUID()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .windowWillShow)) { _ in
-            toolRevision = UUID()
-        }
-        .alert("工具未完成", isPresented: Binding(get: { toolError != nil }, set: { if !$0 { toolError = nil } })) {
-            Button("好", role: .cancel) { toolError = nil }
-        } message: { Text(toolError ?? "") }
         .onChange(of: hints.map(\.type), initial: true) { _, visible in
             Task { await viewModel.clearHiddenFilter(visible) }
         }
@@ -154,10 +135,6 @@ struct EmptyBackgroundView: View {
 
                 Spacer()
 
-                contextualToolTargets
-
-                Spacer()
-
                 pinButton
                     .glassEffect(.regular.interactive(), in: .circle)
                     .glassEffectID("pin", in: glassNamespace)
@@ -192,123 +169,10 @@ struct EmptyBackgroundView: View {
 
             Spacer()
 
-            contextualToolTargets
-
-            Spacer()
-
             pinButton
                 .background(config.material, in: Circle())
         }
         .frame(maxWidth: .infinity)  // 只约束宽度，让高度自然确定
-    }
-
-    private var toolsEngaged: Bool {
-        let document = viewModel.actions.documents
-        return viewModel.actions.isDragging || document.isLoading || document.previewWindowNumber != nil
-    }
-
-    private var showsTools: Bool { toolsEngaged || viewModel.actions.pressedItemID != nil }
-
-    @ViewBuilder private var contextualToolTargets: some View {
-        if showsTools {
-            toolTargets
-                .offset(y: toolsEngaged ? 0 : toolRestingOffset - 6)
-                .allowsHitTesting(toolsEngaged)
-                .accessibilityHidden(!toolsEngaged)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.28), value: toolsEngaged)
-        }
-    }
-
-    private var toolTargets: some View {
-        HStack(spacing: 36) {
-            ForEach(Array(tools.prefix(9).enumerated()), id: \.element.id) { index, tool in
-                Button {
-                    runTool(tool, input: nil)
-                } label: {
-                    Group {
-                        if runningTool == tool.id { ProgressView().controlSize(.small) }
-                        else { Image(systemName: toolSymbol(tool)).overlay(alignment: .bottomTrailing) {
-                            Text("\(index + 1)").font(.pingFang(size: 8)).offset(x: 8, y: 7)
-                        } }
-                    }
-                    .font(.pingFang(size: config.iconSize))
-                    .opacity(toolsEngaged ? 1 : 0)
-                    .frame(width: config.buttonSize, height: config.buttonSize)
-                }
-                .buttonStyle(.plain)
-                .modifier(ToolGlassSurface(id: tool.id, namespace: glassNamespace,
-                                           active: showsTools, selected: targetedTool == tool.id))
-                .scaleEffect(reduceMotion ? 1 : targetedTool == tool.id ? 1.16 : (hoveredTool == tool.id ? Constants.SelectionFeedback.scale : 1))
-                .animation(reduceMotion ? nil : .snappy(duration: 0.22, extraBounce: 0), value: targetedTool)
-                .onHover { inside in
-                    if inside { hoveredTool = tool.id }
-                    else if hoveredTool == tool.id { hoveredTool = nil }
-                }
-                .animation(reduceMotion ? nil : .easeInOut(duration: Constants.SelectionFeedback.duration), value: hoveredTool)
-                .disabled(runningTool != nil)
-                .help("\(tool.name) · 拖入文字卡片 · ⌘⇧\(index + 1)")
-                .accessibilityLabel(tool.name)
-                .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: [.command, .shift])
-                .overlay {
-                    NativeToolDropTarget(enabled: toolsEngaged && runningTool == nil, reduceMotion: reduceMotion,
-                        symbol: toolSymbol(tool), number: index + 1,
-                        onTargetChanged: { targeted in
-                            if targeted { targetedTool = tool.id }
-                            else if targetedTool == tool.id { targetedTool = nil }
-                        }, onActivate: { runTool(tool, input: nil) }, onDrop: { text in
-                            guard runningTool == nil else { return false }
-                            runningTool = tool.id
-                            targetedTool = nil
-                            Task { await executeTool(tool, input: text) }
-                            return true
-                        })
-                }
-            }
-        }
-    }
-
-    private func toolSymbol(_ tool: PromptTool) -> String {
-        switch tool.name {
-        case "Markdown 格式化": return "textformat"
-        case "表格生成": return "tablecells"
-        case "邮件规范化": return "envelope"
-        case "提取标题": return "textformat.size"
-        default: return "wand.and.stars"
-        }
-    }
-
-    @MainActor private func reloadTools() async {
-        do {
-            let current = try await AppDependencies.shared.promptToolCoordinator.loadTools().filter { !$0.isSmart }
-            try Task.checkCancellation()
-            tools = current
-            if let targetedTool, !current.contains(where: { $0.id == targetedTool }) { self.targetedTool = nil }
-            if let hoveredTool, !current.contains(where: { $0.id == hoveredTool }) { self.hoveredTool = nil }
-        } catch is CancellationError {
-            // A newer repository change owns the next toolbar snapshot.
-        } catch {
-            guard !Task.isCancelled else { return }
-            tools = []
-            toolError = error.localizedDescription
-        }
-    }
-
-    @MainActor private func runTool(_ tool: PromptTool, input: String?) {
-        guard runningTool == nil else { return }
-        runningTool = tool.id
-        Task {
-            do {
-                let current = try input ?? viewModel.actions.documents.toolInput()
-                await executeTool(tool, input: current)
-            } catch { runningTool = nil; toolError = error.localizedDescription }
-        }
-    }
-
-    @MainActor private func executeTool(_ tool: PromptTool, input: String?) async {
-        defer { runningTool = nil }
-        do {
-            _ = try await AppDependencies.shared.promptToolCoordinator.executeTool(id: tool.toolID, input: input, autoPaste: false)
-        } catch { toolError = error.localizedDescription }
     }
 
     // MARK: - Search Capsule (内容部分，不含 frame/glass)
@@ -434,113 +298,5 @@ private struct CategorySurfaceFeedback: ViewModifier {
                 }
             }
             .onDisappear { enlarged = false }
-    }
-}
-
-/// Adapts the native whole-card drag image to a tool destination without changing its payload.
-private struct NativeToolDropTarget: NSViewRepresentable {
-    let enabled: Bool
-    let reduceMotion: Bool
-    let symbol: String
-    let number: Int
-    let onTargetChanged: (Bool) -> Void
-    let onActivate: () -> Void
-    let onDrop: (String) -> Bool
-
-    func makeNSView(context: Context) -> DestinationView {
-        let view = DestinationView()
-        view.registerForDraggedTypes([.string])
-        updateNSView(view, context: context)
-        CardDragPresentation.shared.registerTool(view)
-        return view
-    }
-    func updateNSView(_ view: DestinationView, context: Context) {
-        view.symbol = symbol
-        view.number = number
-        view.enabled = enabled
-        view.reduceMotion = reduceMotion
-        view.onTargetChanged = onTargetChanged
-        view.onActivate = onActivate
-        view.onDrop = onDrop
-    }
-
-    static func dismantleNSView(_ view: DestinationView, coordinator: ()) {
-        CardDragPresentation.shared.unregisterTool(view)
-    }
-
-    final class DestinationView: NSView, HistoryToolSurface, CardToolDropSurface {
-        var symbol = "wand.and.stars"
-        var number = 1
-        var enabled = true
-        var reduceMotion = false
-        var onTargetChanged: ((Bool) -> Void)?
-        var onActivate: (() -> Void)?
-        var onDrop: ((String) -> Bool)?
-
-        var toolScreenFrame: CGRect? {
-            guard enabled, !isHidden, let window, window.isVisible else { return nil }
-            return window.convertToScreen(convert(bounds, to: nil))
-        }
-        var toolSymbol: String { symbol }
-        var toolNumber: Int { number }
-        func setCardTargeted(_ targeted: Bool) { onTargetChanged?(targeted) }
-        func acceptCardText(_ text: String) -> Bool { enabled && onDrop?(text) == true }
-
-        override func mouseUp(with event: NSEvent) { if enabled { onActivate?() } }
-        override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
-            guard enabled, sender.draggingPasteboard.string(forType: .string) != nil else { return [] }
-            if !(sender.draggingSource is CardPointerRegion.PointerView) { onTargetChanged?(true) }
-            return sender.draggingSource is CardPointerRegion.PointerView ? .generic : .copy
-        }
-        override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
-            enabled ? (sender.draggingSource is CardPointerRegion.PointerView ? .generic : .copy) : []
-        }
-        override func draggingExited(_ sender: (any NSDraggingInfo)?) {
-            if sender?.draggingSource is CardPointerRegion.PointerView { return }
-            onTargetChanged?(false)
-        }
-        override func prepareForDragOperation(_ sender: any NSDraggingInfo) -> Bool { enabled }
-        override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
-            guard enabled, let text = sender.draggingPasteboard.string(forType: .string) else { return false }
-            let accepted = sender.draggingSource is CardPointerRegion.PointerView
-                ? CardDragPresentation.shared.deliver(text, to: self) : acceptCardText(text)
-            guard accepted else { return false }
-            // The live card surface owns the visible arrival; native dragging carries only the data.
-            sender.animatesToDestination = false
-            return true
-        }
-        override func draggingEnded(_ sender: any NSDraggingInfo) {
-            if !(sender.draggingSource is CardPointerRegion.PointerView) { onTargetChanged?(false) }
-        }
-    }
-}
-
-/// Only the current destination shares the dragged card's glass extraction group.
-private struct ToolGlassSurface: ViewModifier {
-    let id: UUID
-    let namespace: Namespace.ID
-    let active: Bool
-    let selected: Bool
-
-    private var toolsAreDragging: Bool { CardDragPresentation.shared.surface != nil }
-
-    @ViewBuilder func body(content: Content) -> some View {
-        if #available(macOS 26.0, *) {
-            if active {
-                if selected && CardDragPresentation.shared.inside { content.opacity(0) }
-                else if !toolsAreDragging { surface(content) }
-                else { GlassEffectContainer(spacing: 0) { surface(content) } }
-            }
-        } else {
-            content.background(.regularMaterial, in: Circle()).opacity(active ? 1 : 0)
-        }
-    }
-
-    @available(macOS 26.0, *)
-    private func surface(_ content: Content) -> some View {
-        content.foregroundStyle(selected ? Color.primary : Color.secondary)
-            .glassEffect(selected ? .regular.tint(.primary.opacity(0.08)).interactive() : .regular.interactive(), in: .circle)
-            .glassEffectID(id, in: namespace)
-            .glassEffectTransition(.matchedGeometry)
     }
 }

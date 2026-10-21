@@ -54,6 +54,11 @@ import Foundation
         container.smartToolCoordinator
     }
 
+    /// Copies a retained tool result through the shared writer without executing the tool again.
+    func copyToolResult(_ text: String) async {
+        await container.clipboardWriter.write(text)
+    }
+
     private init(container: DependencyContainer) {
         self.container = container
     }

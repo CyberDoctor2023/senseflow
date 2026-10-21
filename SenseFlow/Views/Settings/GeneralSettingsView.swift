@@ -1,16 +1,39 @@
 import SwiftUI
 import ServiceManagement
 
+/// App lifecycle and update preferences only.
 struct GeneralSettingsView: View {
     @Bindable var model: SettingsModel
     @State private var launchError: String?
-    @AppStorage(HistoryCardMotion.preferenceKey) private var cardMotion = HistoryCardMotion.wave
+    var body: some View {
+        SettingsFormContainer {
+            SettingsSection(title: "启动") {
+                SettingsToggle(title: "登录时启动", isOn: $model.launchAtLogin)
+                    .onChange(of: model.launchAtLogin) { _, enabled in setLaunchAtLogin(enabled) }
+                if let launchError { Text(launchError).font(.pingFang(.caption)).foregroundStyle(.red) }
+            }
+            AppUpdateSettingsView()
+        }
+    }
+    private func setLaunchAtLogin(_ enabled: Bool) {
+        do {
+            if enabled { try SMAppService.mainApp.register() }
+            else { try SMAppService.mainApp.unregister() }
+            launchError = nil
+        } catch {
+            model.launchAtLogin = SMAppService.mainApp.status == .enabled
+            launchError = "未能更新启动设置，请在系统设置的登录项中检查。"
+        }
+    }
+}
+
+/// History categories and system capture collection share one settings destination.
+struct ClipboardSettingsView: View {
     @AppStorage("filter_text_enabled") private var textEnabled = true
     @AppStorage("filter_image_enabled") private var imageEnabled = true
     @AppStorage("filter_code_enabled") private var codeEnabled = true
     @AppStorage("filter_screenshot_enabled") private var screenshotEnabled = false
     @AppStorage("filter_recording_enabled") private var recordingEnabled = false
-    @AppStorage(SystemCaptureService.importExistingKey) private var importExistingCaptures = true
     @ObservedObject private var captures = SystemCaptureService.shared
     var body: some View {
         SettingsFormContainer {
@@ -23,19 +46,25 @@ struct GeneralSettingsView: View {
                 Text("截图与录屏默认关闭，开启后自动检索，关闭后保留已导入的历史。")
                     .font(.pingFang(.caption)).foregroundStyle(.secondary)
             }
-            SettingsSection(title: "系统截图与录屏") {
-                SettingsToggle(title: "导入已有截图和录屏", isOn: $importExistingCaptures)
+            if screenshotEnabled || recordingEnabled {
                 Text(captures.errorMessage ?? captures.status).font(.pingFang(.caption))
                     .foregroundStyle(captures.errorMessage == nil ? Color.secondary : Color.red)
-                Text("自动检索 Spotlight 已索引的截图和录屏。受保护文件的读取可能需要系统授权。")
-                    .font(.pingFang(.caption)).foregroundStyle(.secondary)
             }
-            SettingsSection(title: "启动") {
-                SettingsToggle(title: "登录时启动", isOn: $model.launchAtLogin)
-                    .onChange(of: model.launchAtLogin) { _, enabled in setLaunchAtLogin(enabled) }
-                if let launchError { Text(launchError).font(.pingFang(.caption)).foregroundStyle(.red) }
-            }
-            AppUpdateSettingsView()
+        }
+        .onChange(of: screenshotEnabled) { _, _ in
+            captures.refreshCollection()
+        }
+        .onChange(of: recordingEnabled) { _, _ in
+            captures.refreshCollection()
+        }
+    }
+}
+
+/// Visual preferences do not own clipboard collection or application lifecycle.
+struct AppearanceSettingsView: View {
+    @AppStorage(HistoryCardMotion.preferenceKey) private var cardMotion = HistoryCardMotion.wave
+    var body: some View {
+        SettingsFormContainer {
             SettingsSection(title: "卡片动效") {
                 Picker("卡片动效", selection: $cardMotion) {
                     ForEach(HistoryCardMotion.allCases, id: \.self) { motion in
@@ -48,23 +77,6 @@ struct GeneralSettingsView: View {
                     .font(.pingFang(.caption))
                     .foregroundStyle(.secondary)
             }
-        }
-        .onChange(of: screenshotEnabled) { _, _ in
-            captures.refreshCollection()
-        }
-        .onChange(of: recordingEnabled) { _, _ in
-            captures.refreshCollection()
-        }
-        .onChange(of: importExistingCaptures) { _, _ in captures.refreshCollection() }
-    }
-    private func setLaunchAtLogin(_ enabled: Bool) {
-        do {
-            if enabled { try SMAppService.mainApp.register() }
-            else { try SMAppService.mainApp.unregister() }
-            launchError = nil
-        } catch {
-            model.launchAtLogin = SMAppService.mainApp.status == .enabled
-            launchError = "未能更新启动设置，请在系统设置的登录项中检查。"
         }
     }
 }

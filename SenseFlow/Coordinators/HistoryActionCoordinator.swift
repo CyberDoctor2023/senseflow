@@ -7,6 +7,7 @@ import Quartz
 @MainActor @Observable final class HistoryActionCoordinator {
     private(set) var errorMessage: String?
     private(set) var isDragging = false
+    var isToolSessionPresented = false
     private(set) var pressedItemID: Int64?
     var quickLookURL: URL? {
         didSet {

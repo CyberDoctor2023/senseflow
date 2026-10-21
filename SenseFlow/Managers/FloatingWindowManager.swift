@@ -35,7 +35,13 @@ import SwiftUI
     private lazy var documentRepository = DocumentRepository(store: .shared)
     private lazy var clipboardWriter: ClipboardWriter = NSPasteboardAdapter(monitor: .shared)
     private lazy var historyActions = HistoryActionCoordinator(documents: documentPreview, repository: documentRepository, writer: clipboardWriter, onPaste: { [weak self] in
-        if self?.isPinned != true { self?.hideWindowImmediately() }
+        guard let self else { return }
+        // Do not start a history dismissal that will later steal focus from the guide.
+        guard AccessibilityManager.shared.checkAccessibilityPermission() else {
+            self.showAccessibilityTutorial()
+            return
+        }
+        if !self.isPinned { self.hideWindowImmediately() }
         AutoPasteManager.shared.performAutoPaste(delay: 0.5)
     }, onDragEnded: { [weak self] in
         DispatchQueue.main.async { [weak self] in self?.hideIfOutsideWorkspace() }
@@ -74,7 +80,7 @@ import SwiftUI
         self.onboarding = ClipboardOnboardingCoordinator()
 
         // 初始化辅助类
-        self.windowFactory = WindowFactory(layoutConfig: layoutConfig, repository: repository)
+        self.windowFactory = WindowFactory(layoutConfig: layoutConfig, repository: repository, workspace: workspace)
         self.windowConfigurator = WindowConfigurator()
         self.windowPositioner = WindowPositioner(layoutConfig: layoutConfig)
         self.windowLifecycle = WindowLifecycle(
@@ -84,6 +90,10 @@ import SwiftUI
         )
         self.appStateManager = AppStateManager()
 
+        onboarding.onPermissionResolved = { [weak self] in
+            NSApp.activate(ignoringOtherApps: true)
+            self?.showWindow()
+        }
         onboarding.onComplete = { [weak self] in
             self?.completeTutorial()
         }
@@ -124,6 +134,16 @@ import SwiftUI
         onboarding.restart()
         showTutorial()
     }
+    /// Opens the permission chapter directly, including for returning users.
+    func showAccessibilityTutorial() {
+        tutorialHandoffTask?.cancel()
+        tutorialHandoffTask = nil
+        tutorial?.close()
+        tutorial = nil
+        onboarding.reviewAccessibility()
+        NSApp.activate(ignoringOtherApps: true)
+        showTutorial()
+    }
     private func completeTutorial() {
         SystemCaptureService.shared.start()
         guard tutorialHandoffTask == nil else { return }
@@ -145,12 +165,14 @@ import SwiftUI
                 self.tutorial = nil
                 ClipboardMonitor.shared.resumeAfterTutorial()
                 TextSelectionMonitor.shared.startMonitoring()
+                self.showWindow()
                 return
             }
             let handoff = ClipboardHistoryHandoff(outgoingModel: session.historyModel) { [weak self, weak session] in
                 guard let self, let session, self.tutorial === session else { return }
                 session.close()
                 self.tutorial = nil
+                self.onboarding.historyHandoffCompleted()
                 ClipboardMonitor.shared.resumeAfterTutorial()
                 TextSelectionMonitor.shared.startMonitoring()
             }
@@ -231,6 +253,37 @@ import SwiftUI
     }
 
     /// 隐藏窗口并激活前一个应用（用于粘贴场景，也使用对称动画）
+    /// Captures the external application before an asynchronous tool request starts.
+    func toolOutputTarget() -> NSRunningApplication? { appStateManager.pasteTarget }
+
+    /// Restores an explicitly selected result target and pastes without submitting its input.
+    func fillToolResult(_ text: String, into target: NSRunningApplication) async -> Bool {
+        guard !target.isTerminated,
+              target.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+              AccessibilityManager.shared.checkAccessibilityPermission() else { return false }
+        return await withCheckedContinuation { continuation in
+            let paste = {
+                guard !target.isTerminated, target.activate() else {
+                    continuation.resume(returning: false)
+                    return
+                }
+                Task { @MainActor in
+                    await self.clipboardWriter.write(text)
+                    AutoPasteManager.shared.performAutoPaste(expectedTargetPID: target.processIdentifier,
+                        expectedChangeCount: NSPasteboard.general.changeCount) { sent in
+                            continuation.resume(returning: sent)
+                        }
+                }
+            }
+            if !isPinned, let window = activeWindow {
+                documentPreview.historyHidden()
+                if !windowLifecycle.hideWindow(window, completion: paste) {
+                    continuation.resume(returning: false)
+                }
+            } else { paste() }
+        }
+    }
+
     func hideWindowImmediately() {
         historyActions.quickLookURL = nil
         guard let window = activeWindow else { return }

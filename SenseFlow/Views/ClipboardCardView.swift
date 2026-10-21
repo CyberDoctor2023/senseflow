@@ -34,12 +34,13 @@ struct ClipboardCardView: View {
         .animation(reduceMotion ? nil : .smooth(duration: Constants.SelectionFeedback.duration), value: hovered)
         .animation(reduceMotion ? nil : .smooth(duration: Constants.SelectionFeedback.duration), value: isPreviewSource)
         .animation(reduceMotion ? nil : .easeInOut(duration: pressed ? 0.45 : 0.2), value: pressed)
-        .opacity(dragging ? 0.25 : 1)
-        .background(CardPointerRegion(isPreviewSource: isPreviewSource, dragSurface: AnyView(dragSurface), loadDragItem: {
+        .opacity(dragging ? 0.65 : 1)
+        .background(CardPointerRegion(isPreviewSource: isPreviewSource,
+            visualScale: cardScale, makeDragImage: { makeDragThumbnail() }, loadDragItem: {
             try await actions.makeDragPasteboardItem(item)
         }, onDragStateChanged: { active in
             dragging = active
-            actions.setDragging(active || CardDragPresentation.shared.surface != nil)
+            actions.setDragging(active)
         }, onEnter: { bounds in
             hovered = true
             onPointerPresenceChanged?(true)
@@ -88,10 +89,18 @@ struct ClipboardCardView: View {
             sourceFooter
         }
     }
-    private var dragSurface: some View {
-        cardContent.padding(14)
+    /// Renders the actual card content once at lift-off, independent of window backing caches.
+    @MainActor private func makeDragThumbnail() -> NSImage? {
+        let renderer = ImageRenderer(content: cardContent.padding(14)
             .frame(width: Constants.Card.width, height: Constants.Card.height)
-            .environment(\.appearsActive, true)
+            .background(.white.opacity(0.94), in: .rect(cornerRadius: Constants.Card.cornerRadius))
+            .overlay(RoundedRectangle(cornerRadius: Constants.Card.cornerRadius)
+                .strokeBorder(.black.opacity(0.1), lineWidth: 1))
+            .clipShape(.rect(cornerRadius: Constants.Card.cornerRadius))
+            .font(.pingFang(size: 13))
+            .environment(\.colorScheme, .light))
+        renderer.scale = 2
+        return renderer.nsImage
     }
 
     private var sourceFooter: some View {
@@ -128,8 +137,9 @@ struct ClipboardCardView: View {
 /// Converts real card bounds to screen coordinates without geometry work in the body.
 struct CardPointerRegion: NSViewRepresentable {
     let isPreviewSource: Bool
-    let dragSurface: AnyView
+    let visualScale: CGFloat
     var isEnabled: Bool = true
+    let makeDragImage: () -> NSImage?
     let loadDragItem: () async throws -> NSPasteboardItem
     let onDragStateChanged: (Bool) -> Void
     let onEnter: (CGRect) -> Void
@@ -147,9 +157,10 @@ struct CardPointerRegion: NSViewRepresentable {
         view.onPressChanged = onPressChanged; view.onSelect = onSelect
         view.isEnabled = isEnabled
         view.isPreviewSource = isPreviewSource
+        view.makeDragImage = makeDragImage
         view.loadDragItem = loadDragItem
         view.onDragStateChanged = onDragStateChanged
-        view.dragSurface = dragSurface
+        view.visualScale = visualScale
     }
     static func dismantleNSView(_ view: PointerView, coordinator: ()) { view.stopMonitoring() }
     final class PointerView: NSView, NSDraggingSource, HistoryCardSurface {
@@ -161,13 +172,12 @@ struct CardPointerRegion: NSViewRepresentable {
             didSet { if !isEnabled { cancelHold() } }
         }
         var isPreviewSource = false
+        var makeDragImage: (() -> NSImage?)?
         var loadDragItem: (() async throws -> NSPasteboardItem)?
         var onDragStateChanged: ((Bool) -> Void)?
-        var dragSurface: AnyView?
+        var visualScale: CGFloat = 1
         private var dragTask: Task<Void, Never>?
         private var dragSessionActive = false
-        private var dragGeneration = UUID()
-        private var dragCancelled = false
         private var pressOrigin: NSPoint?
         var onEnter: ((CGRect) -> Void)?
         var onLeave: (() -> Void)?
@@ -185,7 +195,6 @@ struct CardPointerRegion: NSViewRepresentable {
             monitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown, .leftMouseDown, .rightMouseUp, .leftMouseUp, .rightMouseDragged, .leftMouseDragged, .scrollWheel, .keyDown]) { [weak self] event in
                 guard let self, self.isEnabled else { return event }
                 if event.type == .keyDown {
-                    if event.keyCode == 53, self.dragSessionActive { self.dragCancelled = true }
                     return event
                 }
                 if event.type == .scrollWheel { self.cancelHold(); return event }
@@ -271,47 +280,35 @@ struct CardPointerRegion: NSViewRepresentable {
                     let payload = try await loader()
                     guard !Task.isCancelled else { return }
                     guard let window = self.window, window.isVisible,
-                          let root = window.contentView,
-                          NSEvent.pressedMouseButtons & 1 != 0 else { self.cancelHold(); return }
-                    // Capture only a still-active drag, using the current slot after loading.
-                    let rect = self.convert(self.bounds, to: root)
-                    let sourceFrame = window.convertToScreen(root.convert(rect, to: nil))
-                    let image = NSImage(size: self.bounds.size)
-                    if let bitmap = root.bitmapImageRepForCachingDisplay(in: rect) {
-                        root.cacheDisplay(in: rect, to: bitmap)
-                        image.addRepresentation(bitmap)
-                    }
+                          NSEvent.pressedMouseButtons & 1 != 0,
+                          let image = self.makeDragImage?() else { self.cancelHold(); return }
+                    let visualBounds = CardVisualGeometry.frame(slot: self.bounds, scale: self.visualScale)
                     let item = NSDraggingItem(pasteboardWriter: payload)
-                    item.setDraggingFrame(self.bounds, contents: image)
-                    if let surface = self.dragSurface {
-                        CardDragPresentation.shared.begin(surface: surface, frame: sourceFrame, window: self.window, nativeItem: item)
-                    }
-                    self.dragCancelled = false
-                    self.dragGeneration = UUID()
+                    // One native thumbnail follows the pointer both inside and outside the app.
+                    let ratio = min(1, 112 / max(visualBounds.width, visualBounds.height))
+                    let size = NSSize(width: visualBounds.width * ratio, height: visualBounds.height * ratio)
+                    let pointer = self.convert(event.locationInWindow, from: nil)
+                    let thumbnail = NSRect(x: pointer.x - size.width / 2,
+                                           y: pointer.y - size.height / 2,
+                                           width: size.width, height: size.height)
+                    item.setDraggingFrame(thumbnail, contents: image)
+                    CardDragPresentation.shared.begin(window: window)
                     self.dragSessionActive = true
                     self.onDragStateChanged?(true)
                     let session = self.beginDraggingSession(with: [item], event: event, source: self)
-                    session.animatesToStartingPositionsOnCancelOrFail = false
+                    session.animatesToStartingPositionsOnCancelOrFail = true
                 } catch { if !Task.isCancelled { self.cancelHold() } }
             }
         }
-        func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation { context == .withinApplication ? .generic : .copy }
+        func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation { .copy }
         func draggingSession(_ session: NSDraggingSession, movedTo screenPoint: NSPoint) {
-            CardDragPresentation.shared.move(to: screenPoint, session: session)
+            CardDragPresentation.shared.move(to: screenPoint)
         }
         func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
-            session.animatesToStartingPositionsOnCancelOrFail = !CardDragPresentation.shared.inside
             dragSessionActive = false
             cancelHold()
-            let delivered = operation.isEmpty && !dragCancelled && NSEvent.pressedMouseButtons & 1 == 0
-                && CardDragPresentation.shared.deliverOnRelease(
-                at: screenPoint, text: session.draggingPasteboard.string(forType: .string))
-            let returnFrame = window.map { $0.convertToScreen(convert(bounds, to: nil)) }
-            let finishingGeneration = dragGeneration
-            CardDragPresentation.shared.finish(cancelled: operation.isEmpty && !delivered, returnFrame: returnFrame) { [weak self] in
-                guard self?.dragGeneration == finishingGeneration else { return }
-                self?.onDragStateChanged?(false)
-            }
+            CardDragPresentation.shared.finish()
+            onDragStateChanged?(false)
         }
         func ignoreModifierKeys(for session: NSDraggingSession) -> Bool { true }
         private var tracking: NSTrackingArea?

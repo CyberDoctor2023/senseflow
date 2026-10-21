@@ -180,6 +180,7 @@ struct ClipboardListView: View {
             // Native card presses consume their events; unclaimed history taps dismiss the preview.
             _ = viewModel.actions.documents.dismissPointerPreview()
         })
+        .allowsWindowActivationEvents()
         .task {
             if loadOnAppear { await viewModel.loadItems() }
         }

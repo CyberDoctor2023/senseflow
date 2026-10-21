@@ -37,6 +37,9 @@ struct PrivacySettingsView: View {
             }
             SettingsSection(title: "系统权限") {
                 permissionRow("辅助功能", detail: "用于把内容填入其他应用的输入框。", granted: permissions.snapshot.accessibilityGranted, anchor: "Privacy_Accessibility")
+                Button("查看授权引导") {
+                    FloatingWindowManager.shared.showAccessibilityTutorial()
+                }.buttonStyle(.bordered)
             }
         }
         .onAppear { permissions.start(consumer: .settings); refreshNames() }

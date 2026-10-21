@@ -76,13 +76,6 @@ enum Strings {
         static let later = "稍后"
     }
 
-    /// 自动粘贴
-    enum AutoPaste {
-        static let manualPasteMessage = "请手动按 Cmd+V 粘贴"
-        static let permissionRequired = "需要辅助功能权限才能自动粘贴。\n\n您可以在系统设置中授予权限。"
-        static let understood = "知道了"
-    }
-
     /// 通用设置
     enum GeneralSettings {
         static let launchAtLoginToggle = "开机自启动"

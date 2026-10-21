@@ -39,6 +39,13 @@ struct SenseFlowApp: App {
             width: Constants.SettingsWindow.defaultWidth,
             height: Constants.SettingsWindow.defaultHeight
         )
+        .commands {
+            CommandGroup(after: .appInfo) {
+                Button("重新体验引导") {
+                    FloatingWindowManager.shared.restartTutorial()
+                }
+            }
+        }
     }
 
     // 在 App 初始化时设置全局容器（仅用于非 SwiftUI 上下文）

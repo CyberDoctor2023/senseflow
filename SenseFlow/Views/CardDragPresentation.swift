@@ -1,64 +1,29 @@
 import SwiftUI
 import AppKit
-import Observation
 
 /// Native tool surfaces expose geometry and one execution boundary to the drag coordinator.
 @MainActor protocol CardToolDropSurface: AnyObject {
     var toolScreenFrame: CGRect? { get }
-    var toolSymbol: String { get }
     var toolNumber: Int { get }
     func setCardTargeted(_ targeted: Bool)
     func acceptCardText(_ text: String) -> Bool
 }
 
-/// Presents the dragged card in the same glass container as its tool targets.
-@MainActor @Observable final class CardDragPresentation {
+/// Coordinates tool highlighting; AppKit owns the single drag image and copy badge.
+@MainActor final class CardDragPresentation {
     static let shared = CardDragPresentation()
-    private(set) var surface: AnyView?
-    private(set) var frame = CGRect.zero
-    private(set) var ownerFrame = CGRect.zero
-    private(set) var inside = false
-    private(set) var opacity: Double = 1
-    var targetFrame: CGRect?
-    var targetSymbol = "wand.and.stars"
-    var targetNumber = 1
-    @ObservationIgnored private weak var owner: NSWindow?
-    @ObservationIgnored private let tools = NSHashTable<NSView>.weakObjects()
-    @ObservationIgnored private weak var selectedTool: (any CardToolDropSurface)?
-    @ObservationIgnored private var delivered = false
-    @ObservationIgnored private var generation = UUID()
-    @ObservationIgnored private var origin = CGRect.zero
-    @ObservationIgnored private var offset = CGPoint.zero
-    @ObservationIgnored private var nativeComponents: [NSDraggingImageComponent] = []
+    private weak var owner: NSWindow?
+    private let tools = NSHashTable<NSView>.weakObjects()
+    private weak var selectedTool: (any CardToolDropSurface)?
+    private var delivered = false
 
-    func begin(surface: AnyView, frame: CGRect, window: NSWindow?, nativeItem: NSDraggingItem) {
-        generation = UUID()
+    func begin(window: NSWindow?) {
         clearTarget()
-        delivered = false
-        self.surface = surface
-        self.frame = frame
-        origin = frame
         owner = window
-        ownerFrame = window?.frame ?? .zero
-        let pointer = NSEvent.mouseLocation
-        offset = CGPoint(x: pointer.x - frame.minX, y: pointer.y - frame.minY)
-        inside = canPresentWholeCard
-        opacity = 1
-        nativeComponents = nativeItem.imageComponents ?? []
-        if inside { nativeItem.imageComponentsProvider = { [] } }
+        delivered = false
     }
-    func move(to point: CGPoint, session: NSDraggingSession) {
-        ownerFrame = owner?.frame ?? ownerFrame
-        frame.origin = CGPoint(x: point.x - offset.x, y: point.y - offset.y)
-        selectTool(at: point)
-        let nextInside = canPresentWholeCard
-        guard nextInside != inside else { return }
-        inside = nextInside
-        let components = nativeComponents
-        session.enumerateDraggingItems(options: [], for: nil, classes: [NSPasteboardItem.self], searchOptions: [:]) { item, _, _ in
-            item.imageComponentsProvider = nextInside ? { [] } : { components }
-        }
-    }
+
+    func move(to point: CGPoint) { selectTool(at: point) }
     func registerTool(_ view: NSView) { tools.add(view) }
     func unregisterTool(_ view: NSView) {
         tools.remove(view)
@@ -68,130 +33,42 @@ import Observation
     private func clearTarget() {
         selectedTool?.setCardTargeted(false)
         selectedTool = nil
-        targetFrame = nil
     }
 
-    private func selectTool(at pointer: CGPoint) {
-        guard surface != nil, ownerFrame.contains(pointer), !delivered else { clearTarget(); return }
-        let candidates = tools.allObjects.compactMap { view -> (any CardToolDropSurface, CGRect, CGFloat)? in
-            guard view.window === owner, let tool = view as? any CardToolDropSurface,
-                  let rect = tool.toolScreenFrame else { return nil }
-            // The card's top edge, rather than its grip point, approaches one circular target.
-            guard let score = CardToolGeometry.connectionScore(card: frame, tool: rect) else { return nil }
-            return (tool, rect, score)
-        }
-        guard let best = candidates.min(by: {
-            $0.2 == $1.2 ? $0.0.toolNumber < $1.0.toolNumber : $0.2 < $1.2
-        }) else { clearTarget(); return }
-        if selectedTool !== best.0 {
+    private func selectTool(at point: CGPoint) {
+        guard let owner, !delivered else { clearTarget(); return }
+        let target = tools.allObjects.first { view in
+            guard view.window === owner || view.window?.parent === owner,
+                  let tool = view as? any CardToolDropSurface,
+                  let rect = tool.toolScreenFrame else { return false }
+            return rect.contains(point)
+        } as? any CardToolDropSurface
+        if selectedTool !== target {
             clearTarget()
-            selectedTool = best.0
-            best.0.setCardTargeted(true)
+            selectedTool = target
+            target?.setCardTargeted(true)
         }
-        if targetFrame != best.1 { targetFrame = best.1 }
-        if targetSymbol != best.0.toolSymbol { targetSymbol = best.0.toolSymbol }
-        if targetNumber != best.0.toolNumber { targetNumber = best.0.toolNumber }
     }
 
-    /// Both native destination and source-release callbacks deliver at most once.
-    func deliver(_ text: String, to tool: any CardToolDropSurface) -> Bool {
+    /// Executes only after AppKit accepts a native drop, at most once per session.
+    func deliver(_ text: String, to tool: any CardToolDropSurface, at point: CGPoint) -> Bool {
+        selectTool(at: point)
         guard !delivered, selectedTool === tool else { return false }
         delivered = true
         guard tool.acceptCardText(text) else { delivered = false; return false }
         return true
     }
 
-    func deliverOnRelease(at point: CGPoint, text: String?) -> Bool {
-        selectTool(at: point)
-        guard let text, let selectedTool else { return false }
-        return deliver(text, to: selectedTool)
-    }
-
-    /// Window-local glass must never replace a native image that extends beyond the window.
-    private var canPresentWholeCard: Bool {
-        ownerFrame.contains(frame.insetBy(dx: -12, dy: -12))
-    }
-
-    func finish(cancelled: Bool, returnFrame: CGRect? = nil, completion: @escaping () -> Void) {
-        let finishingGeneration = generation
+    func finish() {
         clearTarget()
-        let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        withAnimation(reduced ? nil : .easeInOut(duration: 0.22), completionCriteria: .removed) {
-            if cancelled { frame = returnFrame ?? origin }
-            if !cancelled { opacity = 0 }
-        } completion: { [weak self] in
-            if self?.generation == finishingGeneration {
-                self?.surface = nil
-                self?.owner = nil
-            }
-            completion()
-        }
+        owner = nil
     }
 }
 
-/// Renders the same card content above history, sharing native glass merging with the toolbar.
-struct CardDragOverlay: View {
-    @Namespace private var namespace
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    private let drag = CardDragPresentation.shared
-    @ViewBuilder private func identifiedSurface(_ surface: AnyView) -> some View {
-        if #available(macOS 26.0, *) {
-            surface
-                .glassEffect(.regular, in: .rect(cornerRadius: Constants.Card.cornerRadius))
-                .glassEffectID("dragged-card", in: namespace)
-        } else { surface.compatibleGlassEffect(cornerRadius: Constants.Card.cornerRadius, interactive: false) }
-    }
-
-    var body: some View {
-        ZStack(alignment: .topLeading) {
-            if drag.inside, let surface = drag.surface {
-                identifiedSurface(surface)
-                    .frame(width: drag.frame.width, height: drag.frame.height)
-                    .position(x: drag.frame.midX - drag.ownerFrame.minX,
-                              y: drag.ownerFrame.maxY - drag.frame.midY)
-                    .opacity(drag.opacity)
-                ZStack(alignment: .topLeading) {
-                    if let target = drag.targetFrame {
-                        targetSurface
-                            .frame(width: target.width, height: target.height)
-                            .position(x: target.midX - drag.ownerFrame.minX,
-                                      y: drag.ownerFrame.maxY - target.midY)
-                            .transition(reduceMotion ? .opacity : .scale(scale: 1 / 1.16).combined(with: .opacity))
-                    }
-                }
-                .animation(reduceMotion ? nil : .snappy(duration: 0.22, extraBounce: 0), value: drag.targetFrame != nil)
-            }
-        }
-        .compatibleGlassGroup(spacing: 26)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-
-    @ViewBuilder private var targetSurface: some View {
-        if #available(macOS 26.0, *) {
-            Image(systemName: drag.targetSymbol)
-                .font(.pingFang(size: SearchBarConfig.default.iconSize))
-                .overlay(alignment: .bottomTrailing) {
-                    Text("\(drag.targetNumber)").font(.pingFang(size: 8)).offset(x: 8, y: 7)
-                }
-                .frame(width: SearchBarConfig.default.buttonSize, height: SearchBarConfig.default.buttonSize)
-                .foregroundStyle(.primary)
-                .glassEffect(.regular.tint(.primary.opacity(0.08)).interactive(), in: .circle)
-                .glassEffectID("selected-tool", in: namespace)
-                .scaleEffect(reduceMotion ? 1 : 1.16)
-        }
-    }
-
-}
-
-/// Scores a local top-edge connection independently of the mouse grip or window focus.
-enum CardToolGeometry {
-    static func connectionScore(card: CGRect, tool: CGRect) -> CGFloat? {
-        guard !card.isEmpty, !tool.isEmpty else { return nil }
-        let vertical = abs(card.maxY - tool.minY)
-        let horizontal = abs(card.midX - tool.midX)
-        guard vertical <= 30, tool.midX >= card.minX + 20, tool.midX <= card.maxX - 20,
-              horizontal <= tool.width / 2 + 36 else { return nil }
-        return horizontal + vertical * 0.25
+/// Expands a visual shell around a stable layout slot without shifting its center.
+enum CardVisualGeometry {
+    static func frame(slot: CGRect, scale: CGFloat) -> CGRect {
+        slot.insetBy(dx: -slot.width * (scale - 1) / 2,
+                     dy: -slot.height * (scale - 1) / 2)
     }
 }

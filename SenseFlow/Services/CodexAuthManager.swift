@@ -51,6 +51,12 @@ final class CodexAuthManager {
     static let shared = CodexAuthManager()
 
     private let keychainStore: CodexKeychainStore
+    private let credentialLock = NSLock()
+    private var storedSessionCredentials: CodexStoredCredentials?
+    private var sessionCredentials: CodexStoredCredentials? {
+        get { credentialLock.lock(); defer { credentialLock.unlock() }; return storedSessionCredentials }
+        set { credentialLock.lock(); defer { credentialLock.unlock() }; storedSessionCredentials = newValue }
+    }
 
     private init(keychainStore: CodexKeychainStore = CodexKeychainStore()) {
         self.keychainStore = keychainStore
@@ -58,44 +64,51 @@ final class CodexAuthManager {
 
     /// Current Codex auth status with all tokens redacted.
     var currentStatus: CodexAuthStatus {
-        do {
-            guard let credentials = try keychainStore.load() else {
-                return .loggedOut("Codex 未登录，请先登录")
-            }
-            return status(for: credentials)
-        } catch {
-            return .loggedOut(error.localizedDescription)
+        guard let credentials = sessionCredentials else {
+            return .loggedOut("点击解锁已存凭证，或重新登录")
         }
+        return status(for: credentials)
     }
 
     /// Whether SenseFlow has any saved Codex OAuth credentials that generation may refresh.
     var hasCachedCredentials: Bool {
-        (try? keychainStore.load()) != nil
+        keychainStore.containsCredentials
     }
 
     /// Credentials for Codex-authenticated network requests.
     func credentials() async throws -> CodexAuthCredentials {
-        guard let cached = try keychainStore.load() else {
+        guard let cached = try sessionCredentials ?? keychainStore.load() else {
             throw PromptToolError.aiServiceNotConfigured
         }
 
         let usable = cached.isUsableNow ? cached : try await refresh(cached)
+        sessionCredentials = usable
         return CodexAuthCredentials(
             accessToken: usable.accessToken,
             accountID: usable.accountID
         )
     }
 
+    /// Explicit settings action; passive status and execution never prompt for Keychain access.
+    func unlockSavedCredentials() -> Bool {
+        do {
+            sessionCredentials = try keychainStore.load(allowsAuthentication: true)
+            return sessionCredentials != nil
+        } catch { return false }
+    }
+
     /// Starts Codex OAuth in the user's browser and stores the resulting credentials in SenseFlow Keychain.
     func startBrowserLogin() async throws -> CodexAuthStatus {
         let credentials = try await login()
-        try keychainStore.save(credentials)
+        try keychainStore.save(credentials, allowsAuthentication: true)
+        sessionCredentials = credentials
         return status(for: credentials)
     }
 
     /// Removes SenseFlow's saved Codex OAuth credentials.
     func signOut() throws {
         try keychainStore.delete()
+        sessionCredentials = nil
     }
 
     private func login() async throws -> CodexStoredCredentials {
@@ -142,7 +155,6 @@ final class CodexAuthManager {
             try keychainStore.save(refreshed)
             return refreshed
         } catch {
-            try? keychainStore.delete()
             throw error
         }
     }
@@ -471,35 +483,53 @@ private struct CodexKeychainStore {
     private let service = "SenseFlow.CodexOAuth"
     private let account = "default"
 
-    func load() throws -> CodexStoredCredentials? {
+    /// Checks existence without reading token data or opening authentication UI.
+    var containsCredentials: Bool {
+        var query = baseQuery()
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        let status = SecItemCopyMatching(query as CFDictionary, nil)
+        return status == errSecSuccess || status == errSecInteractionNotAllowed || status == errSecAuthFailed
+    }
+
+    func load(allowsAuthentication: Bool = false) throws -> CodexStoredCredentials? {
         var query = baseQuery()
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
+        if !allowsAuthentication { query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail }
 
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         if status == errSecItemNotFound { return nil }
+        if status == errSecInteractionNotAllowed || status == errSecAuthFailed || status == errSecUserCanceled {
+            throw PromptToolError.apiError("执行工具时需要授权读取登录凭证")
+        }
         guard status == errSecSuccess, let data = result as? Data else {
             throw PromptToolError.apiError("Codex 登录凭证读取失败")
         }
         return try JSONDecoder().decode(CodexStoredCredentials.self, from: data)
     }
 
-    func save(_ credentials: CodexStoredCredentials) throws {
+    func save(_ credentials: CodexStoredCredentials, allowsAuthentication: Bool = false) throws {
         let data = try JSONEncoder().encode(credentials)
-        try delete()
-
         var query = baseQuery()
+        if !allowsAuthentication { query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail }
+        let status = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if status == errSecSuccess { return }
+        guard status == errSecItemNotFound else {
+            throw PromptToolError.apiError("Codex 登录凭证保存失败，原凭证已保留")
+        }
         query[kSecValueData as String] = data
         query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        let status = SecItemAdd(query as CFDictionary, nil)
-        guard status == errSecSuccess else {
+        guard SecItemAdd(query as CFDictionary, nil) == errSecSuccess else {
             throw PromptToolError.apiError("Codex 登录凭证保存失败")
         }
     }
 
     func delete() throws {
-        let status = SecItemDelete(baseQuery() as CFDictionary)
+        var query = baseQuery()
+        query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        let status = SecItemDelete(query as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw PromptToolError.apiError("Codex 登录凭证删除失败")
         }

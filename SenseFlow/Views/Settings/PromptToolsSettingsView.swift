@@ -14,6 +14,7 @@ struct PromptToolsSettingsView: View {
     @State private var tools: [PromptTool] = []
     @State private var connectionExpanded = false
     @State private var connectionLoaded = false
+    @StateObject private var credentialFocus = CredentialFocusTarget()
 
     // 使用独立的状态管理编辑模式
     enum EditorMode: Identifiable {
@@ -56,6 +57,9 @@ struct PromptToolsSettingsView: View {
 
     // Keychain 批量保存状态
     @State private var saveSuccess = false
+    @State private var isUnlockingCredentials = false
+    @State private var isSavingCredentials = false
+    @State private var credentialMessage: String?
     @State private var showToolSaveError = false
     @State private var toolSaveErrorMessage = ""
 
@@ -196,6 +200,7 @@ struct PromptToolsSettingsView: View {
                     .help(Strings.PromptToolsSettings.aiServiceHelp)
                     .onChange(of: selectedService) { _, newValue in
                         guard connectionLoaded else { return }
+                        credentialMessage = nil
                         // 从缓存中加载对应服务的 API Key（不触发 Keychain 读取）
                         loadServiceConfigFromCache()
                         apiSettingsService.updateCurrentServiceType(newValue)
@@ -204,6 +209,18 @@ struct PromptToolsSettingsView: View {
                         }
                     }
 
+                    if selectedService.requiresAPIKey || selectedService == .codex {
+                        HStack {
+                            Button("解锁已存凭证") { unlockCredentials() }
+                                .disabled(isUnlockingCredentials || isSavingCredentials || hasUnsavedChanges)
+                            if isUnlockingCredentials { ProgressView().controlSize(.small) }
+                        }
+                        Text("仅主动解锁或保存时可能请求钥匙串访问，拒绝后不会自动重试。")
+                            .font(.pingFang(.caption)).foregroundStyle(.secondary)
+                    }
+                    if let credentialMessage {
+                        Text(credentialMessage).font(.pingFang(.caption)).textSelection(.enabled)
+                    }
                     if selectedService.requiresAPIKey {
                         SecureField(Strings.PromptToolsSettings.apiKeyPlaceholder, text: $apiKey)
                             .textFieldStyle(.roundedBorder)
@@ -232,7 +249,7 @@ struct PromptToolsSettingsView: View {
                             )
                         }
                         .compatibleButtonStyle(prominent: true)
-                        .disabled(!hasUnsavedChanges)
+                        .disabled(!hasUnsavedChanges || isSavingCredentials || isUnlockingCredentials)
                         .help(Strings.PromptToolsSettings.saveButtonHelp)
 
                         if hasUnsavedChanges {
@@ -268,6 +285,7 @@ struct PromptToolsSettingsView: View {
 
             }
 
+        .background(CredentialWindowAnchor(target: credentialFocus))
         .onAppear {
             loadCurrentServiceSelection()
             loadTools()
@@ -356,31 +374,60 @@ struct PromptToolsSettingsView: View {
         originalModelName = loadedModel
     }
 
-    /// 批量保存所有密钥（单次授权）
-    private func saveAllKeys() {
-        // 保存 AI 服务 API Key 到 Keychain（触发授权）
-        if selectedService.requiresAPIKey {
-            _ = apiSettingsService.saveAPIKey(apiKey, for: selectedService)
-            cachedAPIKeys[selectedService] = apiKey
+    /// Explicit credential actions restore the settings window after a system prompt.
+    private func unlockCredentials() {
+        let service = selectedService
+        let window = credentialFocus.window
+        isUnlockingCredentials = true
+        Task { @MainActor in
+            let unlocked = await apiSettingsService.unlockSavedCredentials(for: service)
+            isUnlockingCredentials = false
+            if service == selectedService {
+                loadAllSettings()
+                refreshCodexAuthStatus()
+                credentialMessage = unlocked ? "已解锁" : "未解锁，已保留原凭证。需要时可重试，或重新登录。"
+            }
+            credentialFocus.restore(window)
         }
+    }
 
-        apiSettingsService.saveModelName(modelName, for: selectedService)
-        let normalizedModel = selectedService.selectedModel
-        cachedModelNames[selectedService] = normalizedModel
-
-        // 更新原始值（保存后，当前值就是新的原始值）
-        originalApiKey = apiKey
-        originalModelName = normalizedModel
-        modelName = normalizedModel
-
-        // 更新状态
-        saveSuccess = true
-
-        // 2 秒后重置成功状态
-        Task {
-            try? await Task.sleep(nanoseconds: BusinessRules.Animation.successDisplayDuration)
-            await MainActor.run {
-                saveSuccess = false
+    /// Saves only edited credentials and never treats a denied write as success.
+    private func saveAllKeys() {
+        guard !isSavingCredentials else { return }
+        let service = selectedService
+        let key = apiKey
+        let model = modelName
+        let keyChanged = service.requiresAPIKey && key != originalApiKey
+        guard !keyChanged || !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            credentialMessage = "密钥不能为空，原凭证未修改。"
+            return
+        }
+        let window = credentialFocus.window
+        isSavingCredentials = true
+        saveSuccess = false
+        Task { @MainActor in
+            let saved: Bool
+            if keyChanged {
+                saved = await Task.detached {
+                    KeychainManager.shared.saveAPIKey(key, for: service)
+                }.value
+            } else { saved = true }
+            isSavingCredentials = false
+            credentialFocus.restore(window)
+            guard saved else {
+                credentialMessage = "保存失败，原凭证未修改。请解锁已存凭证后重试。"
+                return
+            }
+            apiSettingsService.saveModelName(model, for: service)
+            let normalizedModel = service.selectedModel
+            cachedAPIKeys[service] = key
+            cachedModelNames[service] = normalizedModel
+            if service == selectedService {
+                originalApiKey = key
+                originalModelName = normalizedModel
+                modelName = normalizedModel
+                saveSuccess = true
+                credentialMessage = "已保存"
             }
         }
     }
@@ -609,5 +656,64 @@ private struct ToolRunView: View {
             .frame(width: Constants.DialogWindow.promptToolEditor.width, height: Constants.DialogWindow.promptToolEditor.height)
     } else {
         Text("需要 macOS 13.0+")
+    }
+}
+
+
+/// Tracks the actual settings host rather than whichever window happens to be key.
+@MainActor private final class CredentialFocusTarget: ObservableObject {
+    weak var window: NSWindow?
+    private var activationObserver: NSObjectProtocol?
+
+    func restore(_ source: NSWindow?) {
+        guard let source, source.isVisible else { return }
+        let responder = source.firstResponder
+        let bringForward = { [weak source] in
+            guard let source, source.isVisible else { return }
+            source.makeKeyAndOrderFront(nil)
+            if let responder { source.makeFirstResponder(responder) }
+        }
+        if let activationObserver {
+            NotificationCenter.default.removeObserver(activationObserver)
+            self.activationObserver = nil
+        }
+        NSApp.unhide(nil)
+        if NSApp.isActive {
+            bringForward()
+            return
+        }
+        activationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: NSApp, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                if let token = self.activationObserver {
+                    NotificationCenter.default.removeObserver(token)
+                    self.activationObserver = nil
+                    bringForward()
+                }
+            }
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        // Expire the one-shot observer rather than restoring on a later unrelated activation.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self, let token = self.activationObserver else { return }
+            NotificationCenter.default.removeObserver(token)
+            self.activationObserver = nil
+            if NSApp.isActive { bringForward() }
+        }
+    }
+}
+
+private struct CredentialWindowAnchor: NSViewRepresentable {
+    let target: CredentialFocusTarget
+    func makeNSView(context: Context) -> Anchor { Anchor(target: target) }
+    func updateNSView(_ view: Anchor, context: Context) { target.window = view.window }
+    final class Anchor: NSView {
+        let target: CredentialFocusTarget
+        init(target: CredentialFocusTarget) { self.target = target; super.init(frame: .zero) }
+        required init?(coder: NSCoder) { nil }
+        override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); target.window = window }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
 }

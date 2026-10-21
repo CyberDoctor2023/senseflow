@@ -7,7 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+        CF1800020000000000000003 = {isa = PBXBuildFile; productRef = CF1800020000000000000002; };
 		C71400010000000000000001 /* CardDragPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C71400020000000000000001 /* CardDragPresentation.swift */; };
+		C71500010000000000000001 /* CentralToolPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = C71500020000000000000001 /* CentralToolPalette.swift */; };
 		AB1400010000000000000001 = {isa = PBXBuildFile; fileRef = AB1400010000000000000002; };
 		AB1400010000000000000005 = {isa = PBXBuildFile; productRef = AB1400010000000000000004; };
 		E8F100010000000000000001 /* TrackpadRevealMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F100020000000000000001 /* TrackpadRevealMonitor.swift */; };
@@ -180,6 +182,7 @@
 
 /* Begin PBXFileReference section */
 		C71400020000000000000001 /* CardDragPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardDragPresentation.swift; sourceTree = "<group>"; };
+		C71500020000000000000001 /* CentralToolPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CentralToolPalette.swift; sourceTree = "<group>"; };
 		AB1400010000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateService.swift; sourceTree = "<group>"; };
 		E8F100020000000000000001 /* TrackpadRevealMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackpadRevealMonitor.swift; path = SenseFlow/Managers/TrackpadRevealMonitor.swift; sourceTree = "<group>"; };
 		B71007010000000000000002 /* onboarding-promotion.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "onboarding-promotion.png"; sourceTree = "<group>"; };
@@ -354,6 +357,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AB1400010000000000000005,
+                CF1800020000000000000003,
 				049B4FDC2F286C6400DB81C4 /* GoogleGenerativeAI in Frameworks */,
 				049B4FE12F286E9000DB81C4 /* OpenTelemetryProtocolExporterHTTP in Frameworks */,
 				04BC7F422F189BF8006978CE /* SQLite in Frameworks */,
@@ -694,6 +698,7 @@
 				04BC7F4F2F18B300006978CE /* ClipboardListView.swift */,
 				04BC7F502F18B300006978CE /* ClipboardCardView.swift */,
 				C71400020000000000000001 /* CardDragPresentation.swift */,
+		C71500020000000000000001 /* CentralToolPalette.swift */,
 				04BC7F512F18B300006978CE /* VisualEffectView.swift */,
 				F3000000000000000000001 /* HotKeyRecorderView.swift */,
 				F4000000000000000000001 /* SettingsView.swift */,
@@ -949,6 +954,7 @@
 			);
 			name = SenseFlow;
 			packageProductDependencies = (
+                CF1800020000000000000002,
 				AB1400010000000000000004,
 				04BC7F412F189BF8006978CE /* SQLite */,
 				05BC7F422F189BF9006978CE /* OpenAI */,
@@ -1006,6 +1012,7 @@
 			);
 			mainGroup = A1000007000000000000001;
 			packageReferences = (
+                CF1800020000000000000001,
 				AB1400010000000000000003,
 				04BC7F402F189BF8006978CE /* XCRemoteSwiftPackageReference "SQLite.swift" */,
 				05BC7F412F189BF9006978CE /* XCRemoteSwiftPackageReference "OpenAI" */,
@@ -1079,6 +1086,7 @@
 				04BC7F532F18B300006978CE /* ClipboardListView.swift in Sources */,
 				04BC7F542F18B300006978CE /* ClipboardCardView.swift in Sources */,
 				C71400010000000000000001 /* CardDragPresentation.swift in Sources */,
+		C71500010000000000000001 /* CentralToolPalette.swift in Sources */,
 				04BC7F552F18B300006978CE /* VisualEffectView.swift in Sources */,
 				04BC7F562F18B400006978CE /* FloatingWindowManager.swift in Sources */,
 				B1000000000000000000001 /* HotKeyPreferences.swift in Sources */,
@@ -1515,7 +1523,11 @@
 		};
 /* End XCRemoteSwiftPackageReference section */
 
+/* Begin XCLocalSwiftPackageReference section */
+        CF1800020000000000000001 = {isa = XCLocalSwiftPackageReference; relativePath = Vendor/AskForPermission; };
+/* End XCLocalSwiftPackageReference section */
 /* Begin XCSwiftPackageProductDependency section */
+        CF1800020000000000000002 = {isa = XCSwiftPackageProductDependency; productName = AskForPermission; };
 		AB1400010000000000000004 = {isa = XCSwiftPackageProductDependency; package = AB1400010000000000000003; productName = Sparkle; };
 		049B4FE02F286E9000DB81C4 /* OpenTelemetryProtocolExporterHTTP */ = {
 			isa = XCSwiftPackageProductDependency;

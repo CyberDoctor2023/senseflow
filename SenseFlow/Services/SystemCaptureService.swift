@@ -3,7 +3,6 @@ import AppKit
 /// Subscribes to indexed system capture files independently of clipboard changes.
 @MainActor final class SystemCaptureService: NSObject, ObservableObject {
     static let shared = SystemCaptureService()
-    static let importExistingKey = "system_capture_import_existing"
     @Published private(set) var status = "开启后按系统标记检索截图和录屏。"
     @Published private(set) var errorMessage: String?
     private let database: DatabaseManager
@@ -39,10 +38,9 @@ import AppKit
         candidates.removeAll()
         candidateIndex = 0
         query.searchScopes = [NSMetadataQueryLocalComputerScope]
-        let importsExisting = UserDefaults.standard.object(forKey: Self.importExistingKey) as? Bool ?? true
         query.predicate = Self.capturePredicate(screenshots: screenshots, recordings: recordings,
-                                                since: importsExisting ? nil : Date())
-        status = importsExisting ? "收集已有及新增的系统截图和录屏。" : "只收集开启后新保存的系统截图和录屏。"
+                                                since: nil)
+        status = "收集已有及新增的系统截图和录屏。"
         query.notificationBatchingInterval = 0.5
         if !query.start() { started = false; errorMessage = "无法开启捕获文件发现，请检查 Spotlight 索引。" }
     }

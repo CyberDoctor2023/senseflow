@@ -30,14 +30,17 @@ import SwiftUI
     private let layoutConfig: WindowLayoutConfigurable
     private let repository: ClipboardRepositoryProtocol
     private let onboarding: ClipboardOnboardingCoordinator?
+    private let workspace: WorkspaceWindowCoordinator
 
     init(
         layoutConfig: WindowLayoutConfigurable,
         repository: ClipboardRepositoryProtocol,
+        workspace: WorkspaceWindowCoordinator,
         onboarding: ClipboardOnboardingCoordinator? = nil
     ) {
         self.layoutConfig = layoutConfig
         self.repository = repository
+        self.workspace = workspace
         self.onboarding = onboarding
     }
 
@@ -87,6 +90,7 @@ import SwiftUI
             mainContainerConfig: layoutConfig.mainContainer,
             cardConfig: layoutConfig.cardArea,
             topConfig: layoutConfig.topBackground,
+            workspace: workspace,
             onItemSelected: onItemSelected,
             handoff: handoff
         )

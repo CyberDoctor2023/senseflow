@@ -79,13 +79,9 @@ enum DocumentCloseChoice { case save, keepDraft, discard, cancel }
         let sampleHeight = (sample as NSString).boundingRect(with: NSSize(width: max(width - 64, 1), height: CGFloat.greatestFiniteMagnitude), options: [.usesLineFragmentOrigin], attributes: [.font: (NSFont(name: "PingFangSC-Regular", size: 15) ?? NSFont.systemFont(ofSize: 15))]).height
         let contentHeight = imageAspectRatio.map { width / max($0, 0.1) } ?? (hasMoreText ? visible.height * 0.7 : sampleHeight)
         let historyWindow = NSApp.windows.first(where: { workspace.contains($0) && $0.isVisible && $0.frame.contains(CGPoint(x: anchor.midX, y: anchor.midY)) })
-        let dock = historyWindow.flatMap { workspace.toolSurfaceFrame(in: $0) }
-        let historyTop = dock?.maxY ?? historyWindow?.frame.maxY ?? anchor.maxY
-        let dockGap: CGFloat = dock == nil ? 16 : 8
-        let remaining = max(180, visible.maxY - historyTop - dockGap)
-        let height = min(max(220, contentHeight + 100), visible.height * 0.78, remaining)
-        let targetY = min(visible.maxY - height, historyTop + dockGap)
-        let target = CGRect(x: visible.midX - width / 2, y: max(visible.minY, targetY), width: width, height: height)
+        let historyTop = historyWindow?.frame.maxY ?? anchor.maxY
+        let target = CentralToolLayout.frames(visible: visible, historyTop: historyTop,
+                                              desiredHeight: min(contentHeight + 100, visible.height * 0.55)).preview
         let sourceFrame = anchor.width > 0 && anchor.height > 0 ? anchor : target
         let reducedMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let start = sourceFrame
@@ -171,9 +167,7 @@ enum DocumentCloseChoice { case save, keepDraft, discard, cancel }
         isClosing = true
         transitionID = UUID()
         let token = transitionID
-        panel.allowsInput = false
-        if onboarding != nil { workspace.restoreKeyWindow(excluding: panel) }
-        panel.resignKey()
+        // Retain key eligibility and active glass until the visible return finishes.
         session?.previewContentVisible = false
         isTransitioning = true
         NSAnimationContext.runAnimationGroup { context in
@@ -184,6 +178,8 @@ enum DocumentCloseChoice { case save, keepDraft, discard, cancel }
         } completionHandler: { [weak self] in
             guard let self, self.transitionID == token else { return }
             panel.orderOut(nil)
+            panel.allowsInput = false
+            self.workspace.restoreKeyWindow(excluding: panel)
             panel.contentView = nil
             self.isClosing = false
             self.isTransitioning = false
@@ -203,12 +199,7 @@ enum DocumentCloseChoice { case save, keepDraft, discard, cancel }
         guard localDismissMonitor == nil, panel?.isVisible == true else { return }
         localDismissMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             guard let self, self.panel?.isVisible == true, !self.isClosing else { return event }
-            guard event.window !== self.panel else { return event }
-            if let window = event.window, self.workspace.contains(window),
-               (self.workspace.containsCard(in: window, at: event.locationInWindow) ||
-                self.workspace.containsTool(in: window, at: event.locationInWindow)) { return event }
-            _ = self.onPointerDismiss?()
-            return event
+            return self.dismissForBackgroundPress(event) ? nil : event
         }
         globalDismissMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -216,6 +207,25 @@ enum DocumentCloseChoice { case save, keepDraft, discard, cancel }
                 _ = self.onPointerDismiss?()
             }
         }
+    }
+
+    /// Activation clicks may change the key window before reaching SwiftUI's tap gesture.
+    /// Resolve the physical target in screen coordinates instead of trusting event.window.
+    private func dismissForBackgroundPress(_ event: NSEvent) -> Bool {
+        guard event.type == .leftMouseDown || event.type == .rightMouseDown,
+              let panel, panel.isVisible, !isClosing else { return false }
+        let point = NSEvent.mouseLocation
+        if panel.frame.contains(point) { return false }
+        let target = NSApp.orderedWindows.first {
+            $0 !== panel && $0.isVisible && !$0.ignoresMouseEvents && $0.frame.contains(point)
+        }
+        if let target, workspace.contains(target) {
+            let local = target.convertPoint(fromScreen: point)
+            if workspace.containsCard(in: target, at: local) || workspace.containsTool(in: target, at: local) {
+                return false
+            }
+        }
+        return onPointerDismiss?() == true
     }
 
     private func stopDismissMonitoring() {

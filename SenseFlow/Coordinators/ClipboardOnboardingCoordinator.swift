@@ -4,21 +4,24 @@ import AppKit
 import SwiftUI
 import Carbon
 import QuartzCore
+import ApplicationServices
 
 /// Progress for the contextual tour; storage and document content remain outside this model.
 @MainActor @Observable final class ClipboardOnboardingCoordinator {
-    enum Step: Int { case launch, history, preview, filters, finished, complete }
+    enum Step: Int { case launch, history, preview, filters, finished, complete, accessibility }
     private(set) var step: Step
     private(set) var hasPreview = false
-    private(set) var didSlideLeft = false
-    private(set) var didSlideRight = false
+    private(set) var didScrollHistory = false
     private(set) var didSelectCategory = false
     private(set) var isGuideLeaving = false
+    private(set) var isExitConfirmationPresented = false
     @ObservationIgnored private var advancement: Task<Void, Never>?
-    private var leftTravel: CGFloat = 0
-    private var rightTravel: CGFloat = 0
+    private var historyTravel: CGFloat = 0
     @ObservationIgnored private let defaults: UserDefaults
     private static let progressKey = "contextual_onboarding_v4_step"
+    private static let permissionAttemptKey = "contextual_onboarding_permission_attempted"
+    private static let welcomePendingKey = "contextual_onboarding_welcome_pending"
+    @ObservationIgnored var onPermissionResolved: (() -> Void)?
     @ObservationIgnored var onComplete: (() -> Void)?
 
     init(defaults: UserDefaults = .standard) {
@@ -28,6 +31,12 @@ import QuartzCore
         } else {
             step = (defaults.object(forKey: "contextual_onboarding_v3_step") as? Int == 4 || defaults.object(forKey: "contextual_onboarding_v2_step") as? Int == 7) ? .complete : .launch
         }
+        if defaults.bool(forKey: Self.welcomePendingKey) ||
+            (step == .accessibility && defaults.bool(forKey: Self.permissionAttemptKey) && AXIsProcessTrusted()) {
+            step = .finished
+            defaults.set(Step.finished.rawValue, forKey: Self.progressKey)
+            defaults.set(true, forKey: Self.welcomePendingKey)
+        }
     }
 
     var isComplete: Bool { step == .complete }
@@ -36,38 +45,33 @@ import QuartzCore
 
     func next() {
         switch step {
-        case .history where didSlideLeft && didSlideRight: move(to: .preview)
-        case .filters where didSelectCategory && !hasPreview: move(to: .finished)
+        case .history where didScrollHistory: move(to: .preview)
+        case .filters where didSelectCategory && !hasPreview: move(to: permissionStep)
         case .finished: move(to: .complete)
         default: break
         }
     }
     /// Finishes after the last instruction has had time to be read.
     func finishAutomatically() {
-        guard step == .finished else { return }
-        advanceAfterReading(from: .finished, to: .complete)
+        guard step == .finished, !isExitConfirmationPresented else { return }
+        move(to: .complete)
     }
     /// Advances only after an actual shortcut or recognized physical reveal gesture.
     func launchRequested() { if step == .launch { move(to: .history) } }
     func historyScrolled(by delta: CGFloat) {
         guard step == .history, delta.isFinite, delta != 0 else { return }
-        // Keep the instruction until scrolling has settled, even after both directions qualify.
+        // Wait until scrolling settles before fading into the next instruction.
         advancement?.cancel()
         advancement = nil
         isGuideLeaving = false
-        if !didSlideLeft {
-            if delta > 0 { leftTravel += delta }
-            didSlideLeft = leftTravel >= 24
-            return
-        }
-        if delta < 0 { rightTravel -= delta }
-        didSlideRight = rightTravel >= 24
-        if didSlideLeft && didSlideRight { advanceAfterReading(from: .history, to: .preview) }
+        historyTravel += abs(delta)
+        didScrollHistory = historyTravel >= 24
+        if didScrollHistory { advanceAfterReading(from: .history, to: .preview) }
     }
     func categorySelected() {
         if step == .filters && !hasPreview {
             didSelectCategory = true
-            advanceAfterReading(from: .filters, to: .finished)
+            advanceAfterReading(from: .filters, to: permissionStep)
         }
     }
     private func advanceAfterReading(from source: Step, to destination: Step) {
@@ -88,15 +92,61 @@ import QuartzCore
         if step == .preview { move(to: .filters) }
     }
     func previewClosed() { hasPreview = false }
+    private var permissionStep: Step { .accessibility }
+    /// Records an explicit authorization attempt so relaunch can resume after the system grants access.
+    func permissionRequested() {
+        guard step == .accessibility else { return }
+        defaults.set(true, forKey: Self.permissionAttemptKey)
+    }
+    /// Clears the resumable completion only after real history has fully appeared.
+    func historyHandoffCompleted() {
+        defaults.removeObject(forKey: Self.welcomePendingKey)
+        defaults.removeObject(forKey: Self.permissionAttemptKey)
+    }
+    /// Continues the same tutorial after authorization, or an explicit choice to defer it.
+    func deferAccessibility() {
+        guard step == .accessibility else { return }
+        move(to: .finished)
+        onPermissionResolved?()
+    }
+    /// Replays only the permission explanation without changing system authorization.
+    func reviewAccessibility() {
+        historyHandoffCompleted()
+        hasPreview = false
+        move(to: .accessibility)
+    }
+    /// Pauses pending guidance while the user decides whether to leave the tour.
+    func beginExitConfirmation() -> Bool {
+        guard !isComplete, !isExitConfirmationPresented else { return false }
+        isExitConfirmationPresented = true
+        advancement?.cancel()
+        advancement = nil
+        isGuideLeaving = false
+        return true
+    }
+    func resolveExitConfirmation(exit: Bool) {
+        isExitConfirmationPresented = false
+        if exit {
+            historyHandoffCompleted()
+            move(to: .complete)
+        } else if step == .finished {
+            finishAutomatically()
+        } else if step == .history && didScrollHistory {
+            advanceAfterReading(from: .history, to: .preview)
+        } else if step == .filters && didSelectCategory && !hasPreview {
+            advanceAfterReading(from: .filters, to: permissionStep)
+        }
+    }
     func skip() { move(to: .complete) }
-    func restart() { didSelectCategory = false; previewClosed(); didSlideLeft = false; didSlideRight = false; leftTravel = 0; rightTravel = 0; move(to: .launch) }
+    func restart() { historyHandoffCompleted(); didSelectCategory = false; previewClosed(); didScrollHistory = false; historyTravel = 0; move(to: .launch) }
 
     private func move(to step: Step) {
-        guard self.step != step else { return }
+        guard self.step != step, !isExitConfirmationPresented else { return }
         advancement?.cancel()
         advancement = nil
         isGuideLeaving = false
         self.step = step
+        if step == .finished { defaults.set(true, forKey: Self.welcomePendingKey) }
         defaults.set(step.rawValue, forKey: Self.progressKey)
         if step == .complete { onComplete?() }
     }
@@ -121,6 +171,7 @@ import QuartzCore
     private var visibility = Visibility.hidden
     private var wantsVisible = false
     private var isClosed = false
+    private var exitKeyMonitor: Any?
     private var teaserDisplayLink: CADisplayLink?
     private var teaserDisplayTarget: ClipboardTeaserDisplayTarget?
     private var teaserRestFrame: NSRect?
@@ -137,12 +188,30 @@ import QuartzCore
             onPaste: onPaste)
         model = ClipboardListViewModel(repository: repository, actions: actions,
             thumbnails: ClipboardThumbnailLoader(repository: repository))
-        let factory = WindowFactory(layoutConfig: layout, repository: repository, onboarding: tour)
+        let factory = WindowFactory(layoutConfig: layout, repository: repository, workspace: workspace, onboarding: tour)
         panel = factory.createWindow(sharedViewModel: model, onItemSelected: { _ in })
         WindowConfigurator().configurePanel(panel)
         workspace.register(panel)
+        exitKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.keyCode == 53, let self, !self.isClosed,
+                  self.isVisible || self.panel.isVisible else { return event }
+            self.confirmExit()
+            return nil
+        }
         documents.onDidSave = { [weak model] in
             Task { await model?.loadItems() }
+        }
+    }
+    private func confirmExit() {
+        guard tour.beginExitConfirmation() else { return }
+        let alert = NSAlert()
+        alert.messageText = "退出引导？"
+        alert.informativeText = "退出后将显示你的剪贴板。你可以在应用菜单中重新体验引导。"
+        alert.addButton(withTitle: "继续体验")
+        alert.addButton(withTitle: "退出引导")
+        let host = NSApp.keyWindow ?? panel
+        alert.beginSheetModal(for: host) { [weak self] response in
+            self?.tour.resolveExitConfirmation(exit: response == .alertSecondButtonReturn)
         }
     }
     func show() {
@@ -150,7 +219,7 @@ import QuartzCore
         if tour.step == .launch {
             showTeaser()
             if launchPanel == nil {
-                let prompt = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 540, height: 148),
+                let prompt = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 680, height: 210),
                     styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
                 prompt.isReleasedWhenClosed = false
                 prompt.isOpaque = false
@@ -301,6 +370,8 @@ import QuartzCore
     }
     func close() {
         isClosed = true
+        if let exitKeyMonitor { NSEvent.removeMonitor(exitKeyMonitor) }
+        exitKeyMonitor = nil
         stopTeaser()
         wantsVisible = false
         launchPanel?.orderOut(nil)
@@ -388,10 +459,10 @@ private struct ClipboardLaunchPrompt: View {
     }
     var body: some View {
         ZStack {
-            OnboardingFeatheredBlur(regions: [CGRect(x: 20, y: 0, width: 500, height: 148)])
+            OnboardingFeatheredBlur(regions: [CGRect(x: 0, y: 0, width: 680, height: 210)])
             VStack(spacing: 12) {
                 Text("呼出剪贴板")
-                    .font(.pingFang(size: 22, weight: .semibold))
+                    .font(OnboardingGuidanceStyle.titleFont)
                     .shadow(color: .white.opacity(0.8), radius: 3)
                     .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
                 HStack(spacing: 18) {
@@ -414,7 +485,7 @@ private struct ClipboardLaunchPrompt: View {
                 }
             }
         }
-        .frame(width: 540, height: 148)
+        .frame(width: 680, height: 210)
         .onAppear { breathing = true }
     }
     private func keycap(_ symbol: String, name: String, index: Int) -> some View {

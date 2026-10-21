@@ -37,7 +37,7 @@ import Observation
             }
             self.welcomeSound?.play()
             Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .milliseconds(800))
+                try? await Task.sleep(for: .milliseconds(reduceMotion ? 1500 : 1680))
                 guard let self else { return }
                 withAnimation(reduceMotion ? nil : .easeIn(duration: 0.2), completionCriteria: .removed) {
                     self.welcomeVisible = false
@@ -78,6 +78,7 @@ struct UnifiedPanelView: View {
     let mainContainerConfig: MainContainerLayoutConfig  // 主容器配置
     let cardConfig: CardAreaLayoutConfig                // 卡片区域配置
     let topConfig: TopBackgroundLayoutConfig            // 顶部搜索栏配置
+    let workspace: WorkspaceWindowCoordinator
 
     var onItemSelected: ((ClipboardItem) -> Void)?
     var handoff: ClipboardHistoryHandoff? = nil
@@ -94,8 +95,7 @@ struct UnifiedPanelView: View {
                     .onboardingTarget(.history, radius: mainContainerConfig.cornerRadius)
                 // Search and background keep their original baseline while a card grows above them.
                 VStack(spacing: 0) {
-                    EmptyBackgroundView(viewModel: viewModel, isExpanded: $isSearchBarExpanded,
-                                        toolRestingOffset: topConfig.windowHeight / 2 + topConfig.gapFromMainWindow)
+                    EmptyBackgroundView(viewModel: viewModel, isExpanded: $isSearchBarExpanded)
                         .frame(height: topConfig.windowHeight)
                         .allowsHitTesting(handoff == nil || handoff?.outgoingModel == nil)
                     Color.clear
@@ -122,8 +122,8 @@ struct UnifiedPanelView: View {
                         .offset(y: geometry.size.height * (1 - (handoff?.arrival ?? 1)))
                         .allowsHitTesting(handoff == nil || handoff?.outgoingModel == nil)
                     if handoff?.welcomeVisible == true {
-                        Text("你的剪贴板已准备好")
-                            .font(.custom("PingFang SC", size: 24).weight(.medium))
+                        Text("剪切板已准备好")
+                            .font(OnboardingGuidanceStyle.titleFont)
                             .foregroundStyle(.primary)
                             .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
                             .transition(.opacity)
@@ -139,7 +139,11 @@ struct UnifiedPanelView: View {
         .padding(.top, Constants.ClipboardWindow.shadowBleedTop)
         .padding(.bottom, Constants.ClipboardWindow.shadowBleedBottom)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .overlay(alignment: .topLeading) { CardDragOverlay() }
+        .background {
+            CentralToolPaletteHost(viewModel: viewModel, workspace: workspace,
+                visible: viewModel.actions.isDragging || viewModel.actions.isToolSessionPresented
+                    || viewModel.actions.documents.previewWindowNumber != nil)
+        }
         .compatibleGlassGroup(spacing: 26)
         .containerBackground(.clear, for: .window)  // 窗口级背景透明
         .font(.pingFang(size: 13))
