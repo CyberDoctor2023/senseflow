@@ -8,6 +8,13 @@
 
 import SwiftUI
 
+/// Chooses the additional card motion without changing native scroll physics.
+enum HistoryCardMotion: String, CaseIterable {
+    case classic, wave
+    static let preferenceKey = "history_card_motion"
+    var title: String { self == .classic ? "经典" : "起伏" }
+}
+
 /// 设置数据模型 - 集中管理所有设置属性
 /// 模仿 Landmarks 项目的 ModelData 模式，使用 @Observable 驱动 UI
 @Observable @MainActor
@@ -19,16 +26,6 @@ class SettingsModel {
     private static let legacyCursorOCRMarker = "cursor_neighborhood_ocr_text is strong local evidence around pointer position"
 
     // MARK: - General Settings
-
-    /// 历史记录上限
-    var historyLimit: Int {
-        didSet { defaults.set(historyLimit, forKey: UserDefaultsKeys.historyLimit) }
-    }
-
-    /// 自动粘贴开关
-    var autoPasteEnabled: Bool {
-        didSet { defaults.set(autoPasteEnabled, forKey: UserDefaultsKeys.autoPasteEnabled) }
-    }
 
     /// 开机自启动
     var launchAtLogin: Bool {
@@ -123,9 +120,6 @@ class SettingsModel {
         let defaults = UserDefaults.standard
 
         // General
-        let savedLimit = defaults.integer(forKey: UserDefaultsKeys.historyLimit)
-        self.historyLimit = savedLimit > 0 ? savedLimit : BusinessRules.ClipboardHistory.defaultLimit
-        self.autoPasteEnabled = defaults.object(forKey: UserDefaultsKeys.autoPasteEnabled) as? Bool ?? true
         self.launchAtLogin = defaults.bool(forKey: UserDefaultsKeys.launchAtLogin)
 
         // Smart AI

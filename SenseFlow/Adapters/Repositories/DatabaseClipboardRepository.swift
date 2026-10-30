@@ -15,11 +15,11 @@ class DatabaseClipboardRepository: ClipboardRepositoryProtocol {
         self.databaseManager = databaseManager
     }
 
-    func fetchRecent(limit: Int) async -> [ClipboardItem] {
-        return await databaseManager.fetchRecentItemsAsync(limit: limit)
+    func fetchRecent(limit: Int, offset: Int) async throws -> [ClipboardItem] {
+        return try await databaseManager.fetchRecentItemsAsync(limit: limit, offset: offset)
     }
 
-    func search(query: String, limit: Int) async -> [ClipboardItem] {
-        return await databaseManager.searchItemsAsync(query: query, limit: limit)
+    func search(query: String, limit: Int, offset: Int) async throws -> [ClipboardItem] {
+        return try await databaseManager.searchItemsAsync(query: query, limit: limit, offset: offset)
     }
 }

@@ -35,7 +35,7 @@ struct SearchBarButton: View, Identifiable {
             action()
         } label: {
             Image(systemName: icon)
-                .font(.system(size: config.iconSize))
+                .font(.pingFang(size: config.iconSize))
                 .foregroundStyle(isHovering ? .primary : .secondary)
                 .frame(width: config.buttonSize, height: config.buttonSize)
                 .background(config.material, in: Circle())

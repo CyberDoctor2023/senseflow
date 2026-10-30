@@ -230,7 +230,7 @@ struct PromptTool: Identifiable, Codable {
 
     /// 是否已配置快捷键
     var hasShortcut: Bool {
-        return shortcutKeyCode != 0
+        return shortcutKeyCode != 0 || shortcutModifiers != 0
     }
 
     /// 快捷键显示字符串

@@ -165,7 +165,7 @@ protocol APIRequestRecorder: Sendable {
 /// - 核心协议（APIRequestRecorder）不依赖 UI 框架
 /// - 可观察协议（ObservableAPIRequestRecorder）为 SwiftUI 提供便利
 /// - 符合接口隔离原则（ISP）
-protocol ObservableAPIRequestRecorder: APIRequestRecorder, AnyObject {
+@MainActor protocol ObservableAPIRequestRecorder: APIRequestRecorder, AnyObject {
     /// 最后一次记录（可观察）
     var lastRecord: APIRequestRecord? { get }
 

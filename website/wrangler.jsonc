@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "senseflow-website",
+  "compatibility_date": "2026-10-09",
+  "workers_dev": true,
+  "preview_urls": false,
+  "assets": { "directory": "./public" },
+  "routes": [
+    { "pattern": "senseflow.top", "custom_domain": true }
+  ]
+}

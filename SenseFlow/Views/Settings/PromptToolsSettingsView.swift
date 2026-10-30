@@ -12,6 +12,9 @@ import SwiftUI
 struct PromptToolsSettingsView: View {
     @EnvironmentObject var dependencies: DependencyEnvironment
     @State private var tools: [PromptTool] = []
+    @State private var connectionExpanded = false
+    @State private var connectionLoaded = false
+    @StateObject private var credentialFocus = CredentialFocusTarget()
 
     // 使用独立的状态管理编辑模式
     enum EditorMode: Identifiable {
@@ -34,6 +37,7 @@ struct PromptToolsSettingsView: View {
     }
 
     @State private var editorMode: EditorMode?
+    @State private var runningTool: PromptTool?
 
     // AI 服务配置
     @State private var selectedService: AIServiceType = .openai
@@ -53,6 +57,9 @@ struct PromptToolsSettingsView: View {
 
     // Keychain 批量保存状态
     @State private var saveSuccess = false
+    @State private var isUnlockingCredentials = false
+    @State private var isSavingCredentials = false
+    @State private var credentialMessage: String?
     @State private var showToolSaveError = false
     @State private var toolSaveErrorMessage = ""
 
@@ -74,14 +81,13 @@ struct PromptToolsSettingsView: View {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                     Text(Strings.PromptToolsSettings.codexAuthTitle)
                     Text(codexAuthStatus.message)
-                        .font(.caption)
+                        .font(.pingFang(.caption))
                         .foregroundStyle(.secondary)
                 }
 
                 Spacer()
             }
 
-            codexMetadataView
 
             HStack {
                 Button {
@@ -117,118 +123,25 @@ struct PromptToolsSettingsView: View {
 
                 if let codexLoginMessage {
                     Text(codexLoginMessage)
-                        .font(.caption)
+                        .font(.pingFang(.caption))
                         .foregroundStyle(codexLoginMessage.contains("失败") ? .red : .secondary)
                 }
             }
         }
     }
 
-    @ViewBuilder
-    private var codexMetadataView: some View {
-        if codexAuthStatus.accountID != nil || codexAuthStatus.planType != nil || codexAuthStatus.expiresAt != nil {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                if let accountID = codexAuthStatus.accountID {
-                    Text("\(Strings.PromptToolsSettings.codexAccountPrefix): \(redactedAccountID(accountID))")
-                }
-                if let planType = codexAuthStatus.planType {
-                    Text("\(Strings.PromptToolsSettings.codexPlanPrefix): \(planType)")
-                }
-                if let expiresAt = codexAuthStatus.expiresAt {
-                    Text("\(Strings.PromptToolsSettings.codexExpiryPrefix): \(formattedDate(expiresAt))")
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-    }
-
     var body: some View {
-        Form {
-                // AI 服务配置
-                Section(Strings.PromptToolsSettings.aiServiceSection) {
-                    Picker(Strings.PromptToolsSettings.aiServicePicker, selection: $selectedService) {
-                        ForEach(AIServiceType.allCases, id: \.rawValue) { service in
-                            Text(service.displayName).tag(service)
-                        }
-                    }
-                    .help(Strings.PromptToolsSettings.aiServiceHelp)
-                    .onChange(of: selectedService) { _, newValue in
-                        // 从缓存中加载对应服务的 API Key（不触发 Keychain 读取）
-                        loadServiceConfigFromCache()
-                        apiSettingsService.updateCurrentServiceType(newValue)
-                        if newValue == .codex {
-                            refreshCodexAuthStatus()
-                        }
-                    }
-
-                    if selectedService.requiresAPIKey {
-                        SecureField(Strings.PromptToolsSettings.apiKeyPlaceholder, text: $apiKey)
-                            .textFieldStyle(.roundedBorder)
-                            .help(Strings.PromptToolsSettings.apiKeyHelp(selectedService.displayName))
-                            .onSubmit {
-                                saveAllKeys()
-                            }
-                    }
-
-                    if selectedService == .codex {
-                        codexAuthSection
-                    }
-
-                    TextField(Strings.PromptToolsSettings.modelPlaceholder, text: $modelName)
-                        .textFieldStyle(.roundedBorder)
-                        .help(Strings.PromptToolsSettings.modelHelp(selectedService.displayName, selectedService.defaultModel))
-                        .onSubmit {
-                            saveAllKeys()
-                        }
-
-                    HStack {
-                        Button(action: saveAllKeys) {
-                            Label(
-                                saveSuccess ? Strings.PromptToolsSettings.saveButtonSaved : Strings.PromptToolsSettings.saveButtonDefault,
-                                systemImage: saveSuccess ? "checkmark.circle.fill" : "square.and.arrow.down"
-                            )
-                        }
-                        .compatibleButtonStyle(prominent: true)
-                        .disabled(!hasUnsavedChanges)
-                        .help(Strings.PromptToolsSettings.saveButtonHelp)
-
-                        if hasUnsavedChanges {
-                            Text(Strings.PromptToolsSettings.unsavedChanges)
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                        }
-
-                        Spacer()
-
-                        Button(Strings.PromptToolsSettings.testConnectionButton) {
-                            testConnection()
-                        }
-                        .compatibleButtonStyle()
-                        .disabled(isTestingConnection || (selectedService.requiresAPIKey && apiKey.isEmpty))
-                        .help(Strings.PromptToolsSettings.testConnectionHelp)
-
-                        if isTestingConnection {
-                            ProgressView()
-                                .scaleEffect(Constants.scaleTiny)
-                        }
-
-                        if let result = connectionTestResult {
-                            Text(result)
-                                .font(.caption)
-                                .foregroundStyle(result.contains("成功") ? .green : .red)
-                        }
-                    }
-                }
-
+        SettingsFormContainer {
                 // Tool 列表
-                Section(Strings.PromptToolsSettings.toolsSection) {
+                SettingsSection(title: "工具列表") {
                     if tools.filter({ !$0.isSmart }).isEmpty {
                         Text(Strings.PromptToolsSettings.emptyToolsMessage)
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(tools.filter { !$0.isSmart }) { tool in
-                            ToolRowView(tool: tool, onEdit: {
+                            ToolRowView(tool: tool, onRun: {
+                                runningTool = tool
+                            }, onEdit: {
                                 // 如果是云端工具，提示复制后编辑
                                 if tool.isCloudManaged {
                                     // 创建本地副本
@@ -257,10 +170,10 @@ struct PromptToolsSettingsView: View {
                         Button {
                             editorMode = .new
                         } label: {
-                            Label("添加 Tool", systemImage: "plus")
+                            Label("新建工具", systemImage: "plus")
                         }
                         .compatibleButtonStyle(prominent: true)
-                        .help("创建新的 Prompt Tool")
+                        .help("创建一个文字处理工具")
 
                         Spacer()
 
@@ -276,18 +189,115 @@ struct PromptToolsSettingsView: View {
                     }
                 }
 
+                // AI 服务配置
+                SettingsSection(title: "服务配置") {
+                    DisclosureGroup("账号与模型", isExpanded: $connectionExpanded) {
+                    Picker(Strings.PromptToolsSettings.aiServicePicker, selection: $selectedService) {
+                        ForEach(AIServiceType.allCases, id: \.rawValue) { service in
+                            Text(service.displayName).tag(service)
+                        }
+                    }
+                    .help(Strings.PromptToolsSettings.aiServiceHelp)
+                    .onChange(of: selectedService) { _, newValue in
+                        guard connectionLoaded else { return }
+                        credentialMessage = nil
+                        // 从缓存中加载对应服务的 API Key（不触发 Keychain 读取）
+                        loadServiceConfigFromCache()
+                        apiSettingsService.updateCurrentServiceType(newValue)
+                        if newValue == .codex {
+                            refreshCodexAuthStatus()
+                        }
+                    }
+
+                    if selectedService.requiresAPIKey || selectedService == .codex {
+                        HStack {
+                            Button("解锁已存凭证") { unlockCredentials() }
+                                .disabled(isUnlockingCredentials || isSavingCredentials || hasUnsavedChanges)
+                            if isUnlockingCredentials { ProgressView().controlSize(.small) }
+                        }
+                        Text("仅主动解锁或保存时可能请求钥匙串访问，拒绝后不会自动重试。")
+                            .font(.pingFang(.caption)).foregroundStyle(.secondary)
+                    }
+                    if let credentialMessage {
+                        Text(credentialMessage).font(.pingFang(.caption)).textSelection(.enabled)
+                    }
+                    if selectedService.requiresAPIKey {
+                        SecureField(Strings.PromptToolsSettings.apiKeyPlaceholder, text: $apiKey)
+                            .textFieldStyle(.roundedBorder)
+                            .help(Strings.PromptToolsSettings.apiKeyHelp(selectedService.displayName))
+                            .onSubmit {
+                                saveAllKeys()
+                            }
+                    }
+
+                    if selectedService == .codex {
+                        codexAuthSection
+                    }
+
+                    TextField(Strings.PromptToolsSettings.modelPlaceholder, text: $modelName)
+                        .textFieldStyle(.roundedBorder)
+                        .help(Strings.PromptToolsSettings.modelHelp(selectedService.displayName, selectedService.defaultModel))
+                        .onSubmit {
+                            saveAllKeys()
+                        }
+
+                    HStack {
+                        Button(action: saveAllKeys) {
+                            Label(
+                                saveSuccess ? Strings.PromptToolsSettings.saveButtonSaved : Strings.PromptToolsSettings.saveButtonDefault,
+                                systemImage: saveSuccess ? "checkmark.circle.fill" : "square.and.arrow.down"
+                            )
+                        }
+                        .compatibleButtonStyle(prominent: true)
+                        .disabled(!hasUnsavedChanges || isSavingCredentials || isUnlockingCredentials)
+                        .help(Strings.PromptToolsSettings.saveButtonHelp)
+
+                        if hasUnsavedChanges {
+                            Text(Strings.PromptToolsSettings.unsavedChanges)
+                                .font(.pingFang(.caption))
+                                .foregroundStyle(.orange)
+                        }
+
+                        Spacer()
+
+                        Button(Strings.PromptToolsSettings.testConnectionButton) {
+                            testConnection()
+                        }
+                        .compatibleButtonStyle()
+                        .disabled(isTestingConnection || (selectedService.requiresAPIKey && apiKey.isEmpty))
+                        .help(Strings.PromptToolsSettings.testConnectionHelp)
+
+                        if isTestingConnection {
+                            ProgressView()
+                                .scaleEffect(Constants.scaleTiny)
+                        }
+
+                        if let result = connectionTestResult {
+                            Text(result)
+                                .font(.pingFang(.caption))
+                                .foregroundStyle(result.contains("成功") ? .green : .red)
+                        }
+                    }
+                }
+
+                }
+
+
             }
-            .formStyle(.grouped)
-            .compatibleControlSize()
+
+        .background(CredentialWindowAnchor(target: credentialFocus))
         .onAppear {
             loadCurrentServiceSelection()
             loadTools()
 
-            // 加载 API Keys（首次触发 Keychain 授权，后续使用缓存）
-            // 这是合理的：用户打开 Settings 就是为了查看/配置密钥
-            loadAllSettings()
-            refreshCodexAuthStatus()
         }
+        .onChange(of: connectionExpanded) { _, expanded in
+            guard expanded, !connectionLoaded else { return }
+            connectionLoaded = true
+            loadAllSettings()
+            if selectedService == .codex { refreshCodexAuthStatus() }
+        }
+
         .sheet(item: $editorMode) { mode in
             PromptToolEditorView(
                 tool: mode.tool,
@@ -324,10 +334,13 @@ struct PromptToolsSettingsView: View {
                 }
             )
         }
-        .alert("Tool 保存失败", isPresented: $showToolSaveError) {
+        .alert("工具保存失败", isPresented: $showToolSaveError) {
             Button("确定", role: .cancel) { }
         } message: {
             Text(toolSaveErrorMessage)
+        }
+        .sheet(item: $runningTool) { tool in
+            ToolRunView(tool: tool, coordinator: dependencies.promptToolCoordinator)
         }
     }
 
@@ -361,31 +374,60 @@ struct PromptToolsSettingsView: View {
         originalModelName = loadedModel
     }
 
-    /// 批量保存所有密钥（单次授权）
-    private func saveAllKeys() {
-        // 保存 AI 服务 API Key 到 Keychain（触发授权）
-        if selectedService.requiresAPIKey {
-            _ = apiSettingsService.saveAPIKey(apiKey, for: selectedService)
-            cachedAPIKeys[selectedService] = apiKey
+    /// Explicit credential actions restore the settings window after a system prompt.
+    private func unlockCredentials() {
+        let service = selectedService
+        let window = credentialFocus.window
+        isUnlockingCredentials = true
+        Task { @MainActor in
+            let unlocked = await apiSettingsService.unlockSavedCredentials(for: service)
+            isUnlockingCredentials = false
+            if service == selectedService {
+                loadAllSettings()
+                refreshCodexAuthStatus()
+                credentialMessage = unlocked ? "已解锁" : "未解锁，已保留原凭证。需要时可重试，或重新登录。"
+            }
+            credentialFocus.restore(window)
         }
+    }
 
-        apiSettingsService.saveModelName(modelName, for: selectedService)
-        let normalizedModel = selectedService.selectedModel
-        cachedModelNames[selectedService] = normalizedModel
-
-        // 更新原始值（保存后，当前值就是新的原始值）
-        originalApiKey = apiKey
-        originalModelName = normalizedModel
-        modelName = normalizedModel
-
-        // 更新状态
-        saveSuccess = true
-
-        // 2 秒后重置成功状态
-        Task {
-            try? await Task.sleep(nanoseconds: BusinessRules.Animation.successDisplayDuration)
-            await MainActor.run {
-                saveSuccess = false
+    /// Saves only edited credentials and never treats a denied write as success.
+    private func saveAllKeys() {
+        guard !isSavingCredentials else { return }
+        let service = selectedService
+        let key = apiKey
+        let model = modelName
+        let keyChanged = service.requiresAPIKey && key != originalApiKey
+        guard !keyChanged || !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            credentialMessage = "密钥不能为空，原凭证未修改。"
+            return
+        }
+        let window = credentialFocus.window
+        isSavingCredentials = true
+        saveSuccess = false
+        Task { @MainActor in
+            let saved: Bool
+            if keyChanged {
+                saved = await Task.detached {
+                    KeychainManager.shared.saveAPIKey(key, for: service)
+                }.value
+            } else { saved = true }
+            isSavingCredentials = false
+            credentialFocus.restore(window)
+            guard saved else {
+                credentialMessage = "保存失败，原凭证未修改。请解锁已存凭证后重试。"
+                return
+            }
+            apiSettingsService.saveModelName(model, for: service)
+            let normalizedModel = service.selectedModel
+            cachedAPIKeys[service] = key
+            cachedModelNames[service] = normalizedModel
+            if service == selectedService {
+                originalApiKey = key
+                originalModelName = normalizedModel
+                modelName = normalizedModel
+                saveSuccess = true
+                credentialMessage = "已保存"
             }
         }
     }
@@ -426,18 +468,6 @@ struct PromptToolsSettingsView: View {
         refreshCodexAuthStatus()
     }
 
-    private func redactedAccountID(_ accountID: String) -> String {
-        guard accountID.count > 8 else { return "••••" }
-        return "\(accountID.prefix(4))…\(accountID.suffix(4))"
-    }
-
-    private func formattedDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
-    }
-
     private func testConnection() {
         isTestingConnection = true
         connectionTestResult = nil
@@ -463,6 +493,7 @@ struct PromptToolsSettingsView: View {
 
 struct ToolRowView: View {
     let tool: PromptTool
+    let onRun: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
 
@@ -473,10 +504,10 @@ struct ToolRowView: View {
                 // 来源图标
                 if tool.source == .langfuse {
                     Text("☁️")
-                        .font(.caption)
+                        .font(.pingFang(.caption))
                 } else if tool.source == .custom {
                     Text("📝")
-                        .font(.caption)
+                        .font(.pingFang(.caption))
                 }
 
                 Text(tool.name)
@@ -485,7 +516,7 @@ struct ToolRowView: View {
                 // SMART 徽章（Smart AI 工具）
                 if tool.isSmart {
                     Text("SMART")
-                        .font(.caption2)
+                        .font(.pingFang(.caption2))
                         .padding(.horizontal, Constants.spacing4)
                         .padding(.vertical, Constants.spacing4)
                         .background(Color.blue)
@@ -496,7 +527,7 @@ struct ToolRowView: View {
 
                 if tool.isDefault {
                     Text("默认")
-                        .font(.caption2)
+                        .font(.pingFang(.caption2))
                         .padding(.horizontal, Constants.spacing4)
                         .padding(.vertical, Constants.spacing4)
                         .background(Color.blue.opacity(Constants.opacity20))
@@ -505,7 +536,7 @@ struct ToolRowView: View {
 
                 if tool.isCloudManaged {
                     Text("只读")
-                        .font(.caption2)
+                        .font(.pingFang(.caption2))
                         .padding(.horizontal, Constants.spacing4)
                         .padding(.vertical, Constants.spacing4)
                         .background(Color.orange.opacity(Constants.opacity20))
@@ -517,6 +548,8 @@ struct ToolRowView: View {
 
                 // 操作按钮
                 HStack(spacing: 8) {
+                    Button("使用", action: onRun)
+                        .buttonStyle(.borderless)
                     Button {
                         onEdit()
                     } label: {
@@ -538,7 +571,7 @@ struct ToolRowView: View {
 
             // Prompt 预览
             Text(tool.prompt)
-                .font(.caption)
+                .font(.pingFang(.caption))
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -547,7 +580,7 @@ struct ToolRowView: View {
                 HStack(spacing: 6) {
                     ForEach(tool.capabilities, id: \.rawValue) { capability in
                         Text(capability.displayName)
-                            .font(.caption2)
+                            .font(.pingFang(.caption2))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3)
                             .background(Color.secondary.opacity(0.15))
@@ -558,13 +591,62 @@ struct ToolRowView: View {
 
             // 快捷键
             Text(tool.shortcutDisplayString)
-                .font(.caption)
+                .font(.pingFang(.caption))
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, Constants.spacing8)
         .padding(.horizontal, Constants.spacing12)
-        .background(Color(NSColor.controlBackgroundColor))
-        .cornerRadius(8)
+        .background(.primary.opacity(0.025), in: .rect(cornerRadius: 12))
+    }
+}
+
+/// Mouse invocation exposes the input and result before the user pastes elsewhere.
+private struct ToolRunView: View {
+    let tool: PromptTool
+    let coordinator: PromptToolCoordinator
+    @Environment(\.dismiss) private var dismiss
+    @State private var input = ""
+    @State private var result: String?
+    @State private var errorMessage: String?
+    @State private var isRunning = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(tool.name).font(.pingFang(.title2)).fontWeight(.semibold)
+            Text("输入文字").font(.pingFang(.headline))
+            TextEditor(text: $input)
+                .font(.pingFang(.body))
+                .frame(minHeight: 140)
+                .disabled(isRunning)
+            if let result {
+                Text("结果 · 已复制").font(.pingFang(.headline))
+                ScrollView { Text(result).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+                    .frame(maxHeight: 180)
+            }
+            if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
+            HStack {
+                Button("关闭") { dismiss() }.disabled(isRunning)
+                Spacer()
+                if isRunning { ProgressView().controlSize(.small) }
+                Button("处理") {
+                    isRunning = true
+                    errorMessage = nil
+                    result = nil
+                    Task { @MainActor in
+                        defer { isRunning = false }
+                        do {
+                            result = try await coordinator.executeTool(id: tool.toolID, input: input, autoPaste: false)
+                        } catch { errorMessage = error.localizedDescription }
+                    }
+                }
+                .compatibleButtonStyle(prominent: true)
+                .disabled(isRunning || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(24)
+        .frame(width: 560)
+        .onAppear { input = NSPasteboard.general.string(forType: .string) ?? "" }
+        .interactiveDismissDisabled(isRunning)
     }
 }
 
@@ -574,5 +656,64 @@ struct ToolRowView: View {
             .frame(width: Constants.DialogWindow.promptToolEditor.width, height: Constants.DialogWindow.promptToolEditor.height)
     } else {
         Text("需要 macOS 13.0+")
+    }
+}
+
+
+/// Tracks the actual settings host rather than whichever window happens to be key.
+@MainActor private final class CredentialFocusTarget: ObservableObject {
+    weak var window: NSWindow?
+    private var activationObserver: NSObjectProtocol?
+
+    func restore(_ source: NSWindow?) {
+        guard let source, source.isVisible else { return }
+        let responder = source.firstResponder
+        let bringForward = { [weak source] in
+            guard let source, source.isVisible else { return }
+            source.makeKeyAndOrderFront(nil)
+            if let responder { source.makeFirstResponder(responder) }
+        }
+        if let activationObserver {
+            NotificationCenter.default.removeObserver(activationObserver)
+            self.activationObserver = nil
+        }
+        NSApp.unhide(nil)
+        if NSApp.isActive {
+            bringForward()
+            return
+        }
+        activationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: NSApp, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                if let token = self.activationObserver {
+                    NotificationCenter.default.removeObserver(token)
+                    self.activationObserver = nil
+                    bringForward()
+                }
+            }
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        // Expire the one-shot observer rather than restoring on a later unrelated activation.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self, let token = self.activationObserver else { return }
+            NotificationCenter.default.removeObserver(token)
+            self.activationObserver = nil
+            if NSApp.isActive { bringForward() }
+        }
+    }
+}
+
+private struct CredentialWindowAnchor: NSViewRepresentable {
+    let target: CredentialFocusTarget
+    func makeNSView(context: Context) -> Anchor { Anchor(target: target) }
+    func updateNSView(_ view: Anchor, context: Context) { target.window = view.window }
+    final class Anchor: NSView {
+        let target: CredentialFocusTarget
+        init(target: CredentialFocusTarget) { self.target = target; super.init(frame: .zero) }
+        required init?(coder: NSCoder) { nil }
+        override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); target.window = window }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
 }

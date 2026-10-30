@@ -21,7 +21,7 @@ struct SettingsIcon: View {
                 .shadow(color: .black.opacity(Constants.opacity10), radius: Constants.SettingsIcon.shadowRadius, x: 0, y: 1)
 
             Image(systemName: icon)
-                .font(.system(size: Constants.SettingsIcon.iconFontSize, weight: .semibold))
+                .font(.pingFang(size: Constants.SettingsIcon.iconFontSize, weight: .semibold))
                 .foregroundColor(.white)
         }
     }

@@ -21,15 +21,6 @@ enum Strings {
         static let reset = "恢复默认"
     }
 
-    /// Onboarding
-    enum Onboarding {
-        static let title = "欢迎使用 \(AppConstants.productName)"
-        static let subtitle = "我们需要一些权限来提供最佳体验"
-        static let mandatorySection = "必需权限"
-        static let optionalSection = "Smart 功能权限（可选）"
-        static let skipHint = "（点击跳过后下次启动不再显示）"
-    }
-
     /// 权限
     enum Permissions {
         static let accessibility = "辅助功能权限"
@@ -85,29 +76,8 @@ enum Strings {
         static let later = "稍后"
     }
 
-    /// 自动粘贴
-    enum AutoPaste {
-        static let manualPasteMessage = "请手动按 Cmd+V 粘贴"
-        static let permissionRequired = "需要辅助功能权限才能自动粘贴。\n\n您可以在系统设置中授予权限。"
-        static let understood = "知道了"
-    }
-
-    /// 窗口标题
-    enum WindowTitles {
-        static let onboardingSetup = "\(AppConstants.productName) 设置向导"
-    }
-
     /// 通用设置
     enum GeneralSettings {
-        static let historySection = "历史记录"
-        static func historyLimitLabel(_ limit: Int) -> String {
-            "历史记录上限: \(limit) 条"
-        }
-        static let historyLimitHelp = "最多保存多少条剪贴板历史记录"
-
-        static let behaviorSection = "行为"
-        static let autoPasteToggle = "启用自动粘贴"
-        static let autoPasteHelp = "点击卡片后自动粘贴到目标应用（需要 Accessibility 权限）"
         static let launchAtLoginToggle = "开机自启动"
         static let launchAtLoginHelp = "系统启动时自动运行 \(AppConstants.productName)"
 

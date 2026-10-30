@@ -32,13 +32,15 @@ class ClipboardMonitor {
     // MARK: - Properties
 
     private var timer: Timer?
+    private let capturePreparationQueue = DispatchQueue(label: "top.senseflow.clipboard-prepare", qos: .utility)
+    private var captureGeneration = UUID()
     private var lastChangeCount: Int = 0
-    private let pasteboard = NSPasteboard.general
-    private var shouldIgnoreNextChange: Bool = false  // 忽略下一次剪贴板变化（用于写入剪贴板时避免循环）
+    private let pasteboard: NSPasteboard
 
     // MARK: - Initialization
 
-    private init() {
+    init(pasteboard: NSPasteboard = .general) {
+        self.pasteboard = pasteboard
         lastChangeCount = pasteboard.changeCount
     }
 
@@ -66,55 +68,37 @@ class ClipboardMonitor {
         logger.info("剪贴板监听已启动（轮询间隔: \(BusinessRules.ClipboardMonitor.pollingInterval)秒）")
     }
 
+    /// Resumes capture without importing anything copied during the tutorial.
+    func resumeAfterTutorial() {
+        lastChangeCount = pasteboard.changeCount
+        startMonitoring()
+    }
+
     /// 停止监听剪贴板
     func stopMonitoring() {
+        captureGeneration = UUID()
         timer?.invalidate()
         timer = nil
         logger.info("剪贴板监听已停止")
     }
 
-    /// 忽略下一次剪贴板变化（用于写入剪贴板时避免循环捕获）
-    ///
-    /// 【设计说明】
-    /// 使用标志位而非时间暂停，精确忽略"我们自己触发的"剪贴板变化
-    /// 优点：
-    /// - ✅ 只忽略下一次变化（精确）
-    /// - ✅ 不依赖时间窗口
-    /// - ✅ 不会误伤用户的快速操作
-    func ignoreNextChange() {
-        shouldIgnoreNextChange = true
-        logger.debug("标记：忽略下一次剪贴板变化")
-    }
-
-    /// 暂停监听（兼容旧接口，内部调用 ignoreNextChange）
-    @available(*, deprecated, message: "使用 ignoreNextChange() 替代")
-    func pauseMonitoring(duration: TimeInterval = BusinessRules.ClipboardMonitor.defaultPauseDuration) {
-        ignoreNextChange()
+    /// Call immediately after an internal write on the main thread, before polling resumes.
+    /// A later external clipboard version remains eligible for capture.
+    func acknowledgeInternalWrite() {
+        lastChangeCount = pasteboard.changeCount
+        logger.debug("已确认应用内部剪贴板写入")
     }
 
     // MARK: - Private Methods
 
     @objc private func checkPasteboard() {
-        guard shouldProcessPasteboard() else { return }
-
         if pasteboardDidChange() {
             processPasteboardContent()
         }
     }
 
-    /// 判断是否应该处理剪贴板
-    private func shouldProcessPasteboard() -> Bool {
-        // 检查是否需要忽略这次变化
-        if shouldIgnoreNextChange {
-            shouldIgnoreNextChange = false  // 重置标志
-            logger.debug("忽略本次剪贴板变化（自触发）")
-            return false
-        }
-        return true
-    }
-
     /// 检查剪贴板是否发生变化
-    private func pasteboardDidChange() -> Bool {
+    func pasteboardDidChange() -> Bool {
         let currentChangeCount = pasteboard.changeCount
         let hasChanged = currentChangeCount != lastChangeCount
 
@@ -294,57 +278,41 @@ class ClipboardMonitor {
     // MARK: - Data Handling
 
     private func handleImageData(_ imageData: Data, appInfo: (name: String, path: String?)) {
-        guard DatabaseManager.shared.insertItem(type: .image, imageData: imageData, appName: appInfo.name, appPath: appInfo.path) else {
-            return
-        }
-
-        // 使用 isEnabled 检查避免昂贵的格式化操作
-        if logger.isEnabled(.info) {
-            let sizeKB = Double(imageData.count) / BusinessRules.DataConversion.bytesPerKilobyte
-            logger.info("保存图片: \(String(format: "%.1f", sizeKB)) KB | 来源: \(appInfo.name)")
-        }
-        notifyClipboardUpdate()
+        enqueueCapture(.init(type: .image, imageData: imageData, appName: appInfo.name, appPath: appInfo.path))
     }
 
     private func handleTextContent(_ textContent: String, appInfo: (name: String, path: String?)) {
-        let trimmedText = textContent.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedText.isEmpty else {
-            logger.warning("空白文本，跳过保存")
-            return
-        }
-
-        guard DatabaseManager.shared.insertItem(type: .text, textContent: textContent, appName: appInfo.name, appPath: appInfo.path) else {
-            return
-        }
-
-        // 使用 isEnabled 检查避免昂贵的字符串截取操作
-        if logger.isEnabled(.info) {
-            let preview = trimmedText.prefix(BusinessRules.TextPreview.logPreview)
-            logger.info("保存文本: \(preview)... | 来源: \(appInfo.name)")
-        }
-        notifyClipboardUpdate()
+        enqueueCapture(.init(type: .text, textContent: textContent, appName: appInfo.name, appPath: appInfo.path))
     }
 
-    /// 处理文件 URL 列表
-    ///
-    /// 【实现说明】
-    /// 将文件路径列表转换为文本存储（与 Deck 的方式一致）
-    /// 格式：每行一个文件路径
     private func handleFileURLs(_ urls: [URL], appInfo: (name: String, path: String?)) {
-        // 将文件路径列表转换为文本（每行一个路径）
-        let filePaths = urls.map { $0.path }.joined(separator: "\n")
-
-        guard DatabaseManager.shared.insertItem(type: .text, textContent: filePaths, appName: appInfo.name, appPath: appInfo.path) else {
-            return
+        let token = captureGeneration
+        Task { @MainActor [weak self] in
+            let ordinary = await SystemCaptureService.shared.importCopiedFiles(urls)
+            guard let self, token == captureGeneration, !ordinary.isEmpty else { return }
+            enqueueCapture(.init(type: .text, textContent: ordinary.map { $0.path }.joined(separator: "\n"), appName: appInfo.name, appPath: appInfo.path))
         }
+    }
 
-        // 使用 isEnabled 检查避免昂贵的字符串操作
-        if logger.isEnabled(.info) {
-            let fileCount = urls.count
-            let preview = fileCount == 1 ? urls[0].lastPathComponent : "\(fileCount) 个文件"
-            logger.info("保存文件: \(preview) | 来源: \(appInfo.name)")
+    private func enqueueCapture(_ request: DatabaseManager.ClipboardItemInsertRequest) {
+        let token = captureGeneration
+        // All clipboard requests share preparation ordering, including images needing pixel hashes.
+        capturePreparationQueue.async { [weak self] in
+            var prepared = request
+            if request.type == .image, let data = request.imageData,
+               SystemCaptureEvidence.imageKind(data) == .screenshot,
+               let identity = try? SystemCaptureEvidence.screenshotIdentity(data) {
+                prepared = .init(type: .image, imageData: data, appName: request.appName,
+                                 appPath: request.appPath, captureKind: .screenshot, contentIdentity: identity)
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, token == captureGeneration else { return }
+                DatabaseManager.shared.enqueueCapture(prepared) { [weak self] success in
+                    if success { self?.notifyClipboardUpdate() }
+                    else { self?.logger.warning("剪贴板保存失败") }
+                }
+            }
         }
-        notifyClipboardUpdate()
     }
 
     private func notifyClipboardUpdate() {

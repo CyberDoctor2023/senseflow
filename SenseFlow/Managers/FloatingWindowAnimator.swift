@@ -8,8 +8,7 @@
 import Cocoa
 
 /// 悬浮窗口动画器（负责窗口显示/隐藏动画）
-/// - Warning: 动画参数（duration / timingFunction / slideOffset）和动画逻辑已调优，禁止修改。
-///   调用方只能控制调用时序，不得更改此文件中的任何动画实现。
+/// Uses the platform timing curve for both directions.
 struct FloatingWindowAnimator {
 
     // MARK: - Animation Constants
@@ -17,8 +16,8 @@ struct FloatingWindowAnimator {
     /// 动画时长
     static let duration: TimeInterval = 0.35
 
-    /// 动画时间函数（自定义贝塞尔曲线）
-    static let timingFunction = CAMediaTimingFunction(controlPoints: 0.5, 1.0, 0.89, 1.0)
+    /// 系统缓入缓出曲线。
+    static let timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
 
     /// 滑动偏移量
     static let slideOffset: CGFloat = 30
@@ -47,7 +46,7 @@ struct FloatingWindowAnimator {
 
         // 执行淡入 + 上移动画
         NSAnimationContext.runAnimationGroup({ context in
-            context.duration = duration
+            context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : duration
             context.timingFunction = timingFunction
 
             var finalFrame = window.frame
@@ -62,7 +61,7 @@ struct FloatingWindowAnimator {
     /// 统一的滑出动画（淡出 + 下滑）
     static func animateSlideOut(window: NSPanel, completion: (() -> Void)? = nil) {
         NSAnimationContext.runAnimationGroup({ context in
-            context.duration = duration
+            context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : duration
             context.timingFunction = timingFunction
 
             var finalFrame = window.frame

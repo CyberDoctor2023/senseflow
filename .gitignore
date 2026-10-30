@@ -50,3 +50,13 @@ blobs/
 
 # 备份文件
 backups/
+
+# Local verification, runtime state, and credentials
+out/
+.omx/
+.env
+.env.*
+*.log
+*.crash
+*.ips
+*.dSYM/
