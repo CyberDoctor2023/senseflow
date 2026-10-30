@@ -50,6 +50,7 @@ struct SenseFlowApp: App {
 // Menu bar content view
 struct MenuBarContentView: View {
     @Environment(\.openWindow) private var openWindow
+    @ObservedObject private var updates = AppUpdateService.shared
 
     var body: some View {
         Button("打开历史 (\(HotKeyPreferences.load().displayString))") {
@@ -57,6 +58,10 @@ struct MenuBarContentView: View {
         }
 
         Divider()
+
+        if let version = updates.availableVersion {
+            Button("发现新版本 \(version)…", action: updates.checkForUpdates)
+        }
 
         Button("设置...") {
             openWindow(id: "settings")

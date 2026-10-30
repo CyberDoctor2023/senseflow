@@ -10,6 +10,7 @@ import SwiftUI
 
 /// 菜单栏图标视图 - 备忘录 + 滑动点点动画
 struct MenuBarIconView: View {
+    @ObservedObject private var updates = AppUpdateService.shared
     @State private var animationTrigger: UInt = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -18,6 +19,11 @@ struct MenuBarIconView: View {
             // 备忘录图标
             Image(systemName: "note.text")
                 .font(.pingFang(size: 14))
+            if updates.availableVersion != nil {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.pingFang(size: 11))
+                    .accessibilityLabel("有新版本可用")
+            }
 
             // 三个点点
             PhaseAnimator([-1, 0, 1, 2, 0, 1, 2], trigger: animationTrigger) { activeIndex in

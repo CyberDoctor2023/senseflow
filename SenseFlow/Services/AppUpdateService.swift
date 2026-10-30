@@ -4,20 +4,30 @@ import SwiftUI
 
 /// Owns the application updater; Sparkle handles scheduling, signing and installation.
 @MainActor
-final class AppUpdateService: ObservableObject {
+final class AppUpdateService: NSObject, ObservableObject, SPUStandardUserDriverDelegate {
     static let shared = AppUpdateService()
     @Published private(set) var canCheckForUpdates = false
     @Published private(set) var automaticallyChecksForUpdates = false
-    private let controller: SPUStandardUpdaterController
+    @Published private(set) var availableVersion: String?
+    private var activationObserver: AnyCancellable?
+    private lazy var controller = SPUStandardUpdaterController(
+        startingUpdater: false, updaterDelegate: nil, userDriverDelegate: self
+    )
 
-    private init() {
-        controller = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil)
+    private override init() {
+        super.init()
         controller.updater.publisher(for: \.canCheckForUpdates)
             .receive(on: RunLoop.main)
             .assign(to: &$canCheckForUpdates)
         controller.updater.publisher(for: \.automaticallyChecksForUpdates)
             .receive(on: RunLoop.main)
             .assign(to: &$automaticallyChecksForUpdates)
+        activationObserver = NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self, self.availableVersion != nil else { return }
+                self.checkForUpdates()
+            }
     }
 
     /// Starts Sparkle after the app's startup configuration has been registered.
@@ -42,6 +52,29 @@ final class AppUpdateService: ObservableObject {
 
     /// Presents Sparkle's standard update UI, including recoverable network errors.
     func checkForUpdates() { controller.checkForUpdates(nil) }
+
+    /// Background menu-bar apps retain a visible reminder until the user returns.
+    var supportsGentleScheduledUpdateReminders: Bool { true }
+
+    func standardUserDriverShouldHandleShowingScheduledUpdate(
+        _ update: SUAppcastItem, andInImmediateFocus immediateFocus: Bool
+    ) -> Bool { immediateFocus }
+
+    func standardUserDriverWillHandleShowingUpdate(
+        _ handleShowingUpdate: Bool, forUpdate update: SUAppcastItem, state: SPUUserUpdateState
+    ) {
+        guard !handleShowingUpdate else { return }
+        availableVersion = update.displayVersionString
+        if NSApp.isActive {
+            DispatchQueue.main.async { [weak self] in self?.checkForUpdates() }
+        }
+    }
+
+    func standardUserDriverDidReceiveUserAttention(forUpdate update: SUAppcastItem) {
+        availableVersion = nil
+    }
+
+    func standardUserDriverWillFinishUpdateSession() { availableVersion = nil }
 }
 
 struct AppUpdateSettingsView: View {
@@ -57,6 +90,9 @@ struct AppUpdateSettingsView: View {
             ))
             Text("启动时及每天检查，有新版本时提醒。")
                 .font(.pingFang(.caption)).foregroundStyle(.secondary)
+            if let version = service.availableVersion {
+                Text("发现新版本 \(version)")
+            }
             Button("检查更新", action: service.checkForUpdates)
                 .disabled(!service.canCheckForUpdates)
         }
