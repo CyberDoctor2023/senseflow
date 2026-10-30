@@ -20,4 +20,5 @@
 - GitHub Actions 41093863143 成功，发布 v0.6.5 为 latest；公开 latest/download/appcast.xml 的版本为 0.6.5/build 2026103101。线上下载 DMG 再次通过公钥签名、实际 Bundle 元数据和严格代码签名验证。
 - 本机已覆盖安装并启动 `/Applications/SenseFlow.app` 0.6.5，证书 C8A15D08A9F9F23BF9B9553FF78AE6D72770B1D6，Team FPVWZ792P2；新旧 designated requirement 一致，未重置 TCC/数据库。
 - 隔离旧版本检查在真实 Sparkle 窗口显示“0.6.5 可供下载，现在版本 0.6.4”。误在该隔离程序尝试安装会因宿主名 UpdateVerification.app 与归档 SenseFlow.app 不同而拒绝（日志明确 searched UpdateVerification.(app|pkg) / no suitable install），不能将此解释为生产 Ed25519 签名失败。已关闭验证进程。后续同名安装验证遇到 CUA timeout/ScreenCaptureKit -3811，停止该测试并恢复正式应用；不宣称已完成 Sparkle 两版本安装/重启。
-- Sparkle 日志另提示后台常驻应用未实现 gentle reminders，后台提示可能在其他应用后面；当前默认调度已恢复，但提醒可见性仍是后续需实测的限制。
+- 已补测完整 Sparkle 安装：使用官方 SPUUserDriver API 自动驱动测试宿主（同名 SenseFlow.app、同 bundle ID、同签名、旧版本 0.6.4，独立 out 路径），真实从线上下载 0.6.5。日志包含“OK: EdDSA signature is correct for update”，依次完成提取、ready、installing，宿主退出后 Sparkle 以 0.6.5 正式二进制替换并自动重新启动；版本、二进制 cmp、严格签名核验通过。未覆盖正式应用为旧版本。证据 `out/2026-10-31-updater-fix/installation-api-test.log`；已终止测试副本并恢复 /Applications 正式应用。
+- Sparkle 日志提示后台常驻应用未实现 gentle reminders，已在 0.6.6 补齐官方 delegate 与菜单栏提示，不再仅依赖藏在后台的窗口。

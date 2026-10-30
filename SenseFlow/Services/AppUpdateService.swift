@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Owns the application updater; Sparkle handles scheduling, signing and installation.
 @MainActor
-final class AppUpdateService: NSObject, ObservableObject, SPUStandardUserDriverDelegate {
+final class AppUpdateService: NSObject, ObservableObject, @preconcurrency SPUStandardUserDriverDelegate {
     static let shared = AppUpdateService()
     @Published private(set) var canCheckForUpdates = false
     @Published private(set) var automaticallyChecksForUpdates = false
