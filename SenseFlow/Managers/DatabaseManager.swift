@@ -34,33 +34,6 @@ class DatabaseManager {
     private let captureKind = Expression<String?>("capture_kind")
     private let origin = Expression<String>("origin")
 
-    // v0.2: Prompt Tools 表
-    internal let promptToolsTable = Table("prompt_tools")
-    internal let toolId = Expression<String>("id")  // UUID string
-    internal let toolName = Expression<String>("name")
-    internal let toolPrompt = Expression<String>("prompt")
-    internal let toolShortcutKeyCode = Expression<Int>("shortcut_key_code")
-    internal let toolShortcutModifiers = Expression<Int>("shortcut_modifiers")
-    internal let toolIsDefault = Expression<Bool>("is_default")
-    internal let toolCreatedAt = Expression<Double>("created_at")
-    internal let toolUpdatedAt = Expression<Double>("updated_at")
-
-    // v0.4: Remote Tools Fields
-    internal let toolSource = Expression<String>("source")
-    internal let toolRemoteId = Expression<String?>("remote_id")
-    internal let toolRemoteAuthor = Expression<String?>("remote_author")
-    internal let toolRemoteVotes = Expression<Int>("remote_votes")
-    internal let toolRemoteUpdatedAt = Expression<Double?>("remote_updated_at")
-
-    // v0.5: Langfuse Fields
-    internal let toolLangfuseName = Expression<String?>("langfuse_name")
-    internal let toolLangfuseVersion = Expression<Int?>("langfuse_version")
-    internal let toolLangfuseLabels = Expression<String?>("langfuse_labels")  // JSON array
-    internal let toolLastSyncedAt = Expression<Double?>("last_synced_at")
-
-    // v0.6: Prompt Tool Capabilities (JSON array)
-    internal let toolCapabilities = Expression<String?>("capabilities")
-
     // 配置
     private let largeFileSizeThreshold = 512 * 1024  // 512KB
 
@@ -165,33 +138,6 @@ class DatabaseManager {
             table.column(ocrText)  // v0.2: OCR 文本字段
         })
 
-        // v0.2: Prompt Tools 表（包含所有字段到 v0.5）
-        try db?.run(promptToolsTable.create(ifNotExists: true) { table in
-            table.column(toolId, primaryKey: true)
-            table.column(toolName)
-            table.column(toolPrompt)
-            table.column(toolShortcutKeyCode, defaultValue: 0)
-            table.column(toolShortcutModifiers, defaultValue: 0)
-            table.column(toolIsDefault, defaultValue: false)
-            table.column(toolCreatedAt)
-            table.column(toolUpdatedAt)
-
-            // v0.4: Remote Tools Fields
-            table.column(toolSource, defaultValue: "custom")
-            table.column(toolRemoteId)
-            table.column(toolRemoteAuthor)
-            table.column(toolRemoteVotes, defaultValue: 0)
-            table.column(toolRemoteUpdatedAt)
-
-            // v0.5: Langfuse Fields
-            table.column(toolLangfuseName)
-            table.column(toolLangfuseVersion)
-            table.column(toolLangfuseLabels)
-            table.column(toolLastSyncedAt)
-
-            // v0.6: Explicit capabilities tags
-            table.column(toolCapabilities)
-        })
     }
 
     private func createIndexes() throws {
@@ -597,7 +543,3 @@ class DatabaseManager {
 }
 
 // MARK: - Notification Names
-
-extension Notification.Name {
-    static let promptToolsDidUpdate = Notification.Name("promptToolsDidUpdate")
-}

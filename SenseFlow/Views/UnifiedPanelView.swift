@@ -139,11 +139,6 @@ struct UnifiedPanelView: View {
         .padding(.top, Constants.ClipboardWindow.shadowBleedTop)
         .padding(.bottom, Constants.ClipboardWindow.shadowBleedBottom)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .background {
-            CentralToolPaletteHost(viewModel: viewModel, workspace: workspace,
-                visible: viewModel.actions.isDragging || viewModel.actions.isToolSessionPresented
-                    || viewModel.actions.documents.previewWindowNumber != nil)
-        }
         .compatibleGlassGroup(spacing: 26)
         .containerBackground(.clear, for: .window)  // 窗口级背景透明
         .font(.pingFang(size: 13))

@@ -28,8 +28,6 @@
 	<string>SenseFlow 需要辅助功能权限来实现自动粘贴功能，让您选择历史记录后自动粘贴到当前应用。</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026. All rights reserved.</string>
-	<key>NSScreenCaptureDescription</key>
-	<string>SenseFlow 使用屏幕截图分析您的当前上下文，以推荐最合适的工具。截图仅在您按下智能推荐快捷键时触发，不会被保存。</string>
 	<key>SUFeedURL</key>
 	<string>https://github.com/CyberDoctor2023/senseflow/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>

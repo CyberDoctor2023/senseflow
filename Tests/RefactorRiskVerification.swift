@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import SQLite
 @testable import SenseFlow
 
 /// Exercises production persistence and retained-memory limits in an isolated database.
@@ -11,6 +12,20 @@ import AppKit
         let directory = URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let store = DatabaseManager(databaseURL: directory.appendingPathComponent("history.sqlite"))
+        let fresh = try Connection(directory.appendingPathComponent("history.sqlite").path)
+        try require((try fresh.scalar("SELECT COUNT(*) FROM sqlite_master WHERE name = 'prompt_tools'") as? Int64) == 0,
+                    "fresh clipboard database does not create retired feature tables")
+        let legacyURL = directory.appendingPathComponent("legacy.sqlite")
+        let legacy = try Connection(legacyURL.path)
+        try legacy.run("CREATE TABLE clipboard_history (id INTEGER PRIMARY KEY, unique_id TEXT UNIQUE, type TEXT, text_content TEXT, image_data BLOB, blob_path TEXT, timestamp INTEGER, app_name TEXT)")
+        try legacy.run("INSERT INTO clipboard_history VALUES (1, 'legacy-original', 'text', 'original content', NULL, NULL, 1, 'legacy')")
+        legacy.userVersion = 1
+        let migrated = DatabaseManager(databaseURL: legacyURL)
+        let migratedRows = try await migrated.fetchRecentItemsAsync(limit: 1)
+        try require(migratedRows.first?.textContent == "original content", "legacy history survives clipboard-only migration")
+        let legacyColumns = Set(try legacy.prepare("PRAGMA table_info(clipboard_history)").compactMap { $0[1] as? String })
+        try require(legacyColumns.contains("app_path") && legacyColumns.contains("ocr_text"), "legacy migration adds both retained history columns")
+
         let boundaries: [Date?] = [nil, Date()]
         for screenshots in [false, true] {
             for recordings in [false, true] {
@@ -27,32 +42,6 @@ import AppKit
                 }
             }
         }
-        let tools = SQLitePromptToolRepository(databaseManager: store)
-        let tool = PromptTool(name: "isolated concurrent save", prompt: "keep original input")
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            for _ in 0..<40 { group.addTask { try await tools.save(tool) } }
-            try await group.waitForAll()
-        }
-        let saved = try await tools.findAll()
-        try require(saved.count == 1 && saved.first?.id == tool.id, "concurrent saves retain one tool identity")
-        let found = try await tools.find(by: tool.toolID)
-        try require(found?.prompt == tool.prompt, "primary-key tool lookup preserves prompt")
-
-        let countLimited = InMemoryAPIRequestRecorder(maxRecords: 3, maxBytes: 8192)
-        for _ in 0..<10 { await countLimited.record(record(body: "small")) }
-        try require(countLimited.allRecords.count == 3, "diagnostic record count evicts the oldest records")
-        let recorder = InMemoryAPIRequestRecorder(maxRecords: 50, maxBytes: 2048)
-        for _ in 0..<10 { await recorder.record(record(body: String(repeating: "x", count: 700))) }
-        try require(recorder.allRecords.count <= 3 && recorder.retainedBytes <= 2048,
-                    "record count and duplicated payload bytes remain bounded")
-        let prior = recorder.allRecords.map(\.id)
-        await recorder.record(record(body: String(repeating: "x", count: 4000)))
-        try require(recorder.allRecords.map(\.id) == prior && recorder.retainedBytes <= 2048,
-                    "oversized diagnostics do not evict or retain screenshot payloads")
-        await recorder.clearAll()
-        try require(recorder.allRecords.isEmpty && recorder.retainedBytes == 0 && recorder.lastRecord == nil,
-                    "clearing diagnostics releases all retained payloads")
-
         try await store.performStoreOperation {
             for index in 0..<401 {
                 guard store.insertItem(.init(type: .text, textContent: index == 0 ? "func hello() { return 1 }" : "普通段落 \(index)", appName: "isolated")) else {
@@ -205,10 +194,7 @@ import AppKit
             actions: HistoryActionCoordinator(documents: documents, repository: content, writer: writer, onPaste: {}),
             thumbnails: ClipboardThumbnailLoader(repository: content))
     }
-    private static func record(body: String) -> APIRequestRecord {
-        APIRequestRecord(toolName: "isolated", serviceType: "offline", modelName: "none",
-                         requestBodyJSON: body, messagesJSON: body)
-    }
+
     private static func sample(id: Int64, text: String) -> ClipboardItem {
         ClipboardItem(id: id, uniqueId: UUID().uuidString, type: .text, textContent: text,
                       imageData: nil, blobPath: nil, timestamp: id, appName: "isolated", appPath: nil)

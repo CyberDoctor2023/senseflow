@@ -15,7 +15,7 @@ struct PrivacySettingsView: View {
             SettingsSection(title: "数据存储") {
                 Text("历史记录保存在本机。")
                     .font(.pingFang(size: 13))
-                Text("系统标记为密码、隐藏或临时的内容不会进入历史。使用在线工具时，处理所需的内容会发送给你选择的服务。")
+                Text("系统标记为密码、隐藏或临时的内容不会进入历史。")
                     .font(.pingFang(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             SettingsSection(title: "排除的应用") {

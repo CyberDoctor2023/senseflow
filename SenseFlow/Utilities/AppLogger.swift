@@ -112,8 +112,6 @@ extension AppLogger {
     /// 数据库日志
     static let database = AppLogger(category: "Database")
 
-    /// AI 服务日志
-    static let ai = AppLogger(category: "AI")
 
     /// 通用日志
     static let general = AppLogger(category: "General")

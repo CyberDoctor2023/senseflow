@@ -11,7 +11,6 @@ import SwiftUI
 @main
 struct SenseFlowApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @StateObject private var dependencies = DependencyEnvironment()
 
     /// 设置数据模型（App 层创建，通过 .environment() 注入，对标 Landmarks 的 ModelData）
     @State private var settingsModel = SettingsModel()
@@ -21,7 +20,6 @@ struct SenseFlowApp: App {
         MenuBarExtra {
             MenuBarContentView()
                 .font(.pingFang(size: 13))
-                .environmentObject(dependencies)
         } label: {
             MenuBarIconView()
         }
@@ -31,7 +29,6 @@ struct SenseFlowApp: App {
         Window("设置", id: "settings") {
             SettingsView()
                 .environment(settingsModel)
-                .environmentObject(dependencies)
                 .frame(minWidth: Constants.SettingsWindow.minWidth, minHeight: Constants.SettingsWindow.minHeight)
         }
         .windowStyle(.hiddenTitleBar)
@@ -48,12 +45,6 @@ struct SenseFlowApp: App {
         }
     }
 
-    // 在 App 初始化时设置全局容器（仅用于非 SwiftUI 上下文）
-    init() {
-        // 注意：这是一个受控的单例初始化，只在应用启动时执行一次
-        // SwiftUI 视图应该使用 @EnvironmentObject，不要使用这个单例
-        AppDependencies.setSharedContainer(dependencies.container)
-    }
 }
 
 // Menu bar content view

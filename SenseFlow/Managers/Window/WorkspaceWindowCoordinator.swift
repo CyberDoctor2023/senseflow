@@ -3,8 +3,6 @@ import AppKit
 /// A native card surface opts into hit testing without exposing its SwiftUI implementation.
 @MainActor protocol HistoryCardSurface: AnyObject {}
 
-/// A tool surface keeps preview actions inside the shared workspace.
-@MainActor protocol HistoryToolSurface: AnyObject {}
 
 /// Explicit window membership replaces hardcoded history A/B focus checks.
 @MainActor final class WorkspaceWindowCoordinator {
@@ -25,27 +23,8 @@ import AppKit
         guard let root = window.contentView else { return false }
         return contains(root)
     }
-    func toolSurfaceFrame(in window: NSWindow) -> CGRect? {
-        var result: CGRect?
-        func visit(_ view: NSView) {
-            guard !view.isHiddenOrHasHiddenAncestor else { return }
-            if view is any HistoryToolSurface {
-                let frame = window.convertToScreen(view.convert(view.bounds, to: nil))
-                result = result.map { $0.union(frame) } ?? frame
-            }
-            view.subviews.forEach(visit)
-        }
-        if let root = window.contentView { visit(root) }
-        return result
-    }
-    func containsTool(in window: NSWindow, at point: NSPoint) -> Bool {
-        func contains(_ view: NSView) -> Bool {
-            guard !view.isHiddenOrHasHiddenAncestor else { return false }
-            if view is any HistoryToolSurface, view.visibleRect.contains(view.convert(point, from: nil)) { return true }
-            return view.subviews.contains(where: contains)
-        }
-        return window.contentView.map(contains) ?? false
-    }
+
+
     var hasKeyWindow: Bool { contains(NSApp.keyWindow) }
 
     /// Hands focus back to a visible workspace surface without activating the app.

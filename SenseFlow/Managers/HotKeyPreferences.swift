@@ -19,14 +19,6 @@ struct HotKeyConfig: Codable, Equatable {
         HotKeyConfig(keyCode: 9, modifierFlags: UInt32(cmdKey) | UInt32(shiftKey))
     }
 
-    /// Smart 默认快捷键：Cmd+Ctrl+V
-    static var smartDefault: HotKeyConfig {
-        HotKeyConfig(
-            keyCode: 9,  // V key
-            modifierFlags: UInt32(cmdKey) | UInt32(controlKey)
-        )
-    }
-
     /// 获取快捷键显示文本
     var displayString: String {
         var parts: [String] = []
@@ -69,14 +61,11 @@ struct HotKeyConfig: Codable, Equatable {
 class HotKeyPreferences {
     enum Kind {
         case main
-        case smart
 
         fileprivate var storageKey: String {
             switch self {
             case .main:
                 return UserDefaultsKeys.hotKeyConfig
-            case .smart:
-                return UserDefaultsKeys.smartHotKeyConfig
             }
         }
 
@@ -84,8 +73,6 @@ class HotKeyPreferences {
             switch self {
             case .main:
                 return .default
-            case .smart:
-                return .smartDefault
             }
         }
 
@@ -93,8 +80,6 @@ class HotKeyPreferences {
             switch self {
             case .main:
                 return "主快捷键"
-            case .smart:
-                return "Smart 快捷键"
             }
         }
     }
@@ -130,20 +115,6 @@ class HotKeyPreferences {
         }
     }
 
-    /// 兼容旧调用：加载 Smart 快捷键
-    static func loadSmart() -> HotKeyConfig {
-        load(kind: .smart)
-    }
-
-    /// 兼容旧调用：保存 Smart 快捷键
-    static func saveSmart(keyCode: UInt32, modifiers: UInt32) {
-        save(keyCode: keyCode, modifiers: modifiers, kind: .smart)
-    }
-
-    /// 兼容旧调用：重置 Smart 快捷键
-    static func resetSmart() {
-        reset(kind: .smart)
-    }
 }
 
 /// 快捷键设置事务：统一处理「保存 -> 重载注册 -> 失败回滚」
@@ -197,8 +168,6 @@ enum HotKeySettingsTransaction {
         switch kind {
         case .main:
             return AppHotKeyCoordinator.shared.reloadMainHotKey()
-        case .smart:
-            return AppHotKeyCoordinator.shared.reloadSmartHotKey()
         }
     }
 }

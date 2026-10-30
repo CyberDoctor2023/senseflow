@@ -540,7 +540,7 @@ import CryptoKit
         let window = KeyboardAcceptingPanel(contentRect: CGRect(x: 120, y: 80, width: 800, height: WindowLayoutConfig.default.unifiedWindowHeight), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         window.isOpaque = false
         window.backgroundColor = .clear
-        window.contentView = NSHostingView(rootView: UnifiedPanelView(viewModel: model, mainContainerConfig: .default, cardConfig: .default, topConfig: .default))
+        window.contentView = NSHostingView(rootView: UnifiedPanelView(viewModel: model, mainContainerConfig: .default, cardConfig: .default, topConfig: .default, workspace: WorkspaceWindowCoordinator()))
         workspace.register(window)
         window.orderFrontRegardless()
         return (window, model)

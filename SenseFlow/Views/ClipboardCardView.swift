@@ -292,7 +292,6 @@ struct CardPointerRegion: NSViewRepresentable {
                                            y: pointer.y - size.height / 2,
                                            width: size.width, height: size.height)
                     item.setDraggingFrame(thumbnail, contents: image)
-                    CardDragPresentation.shared.begin(window: window)
                     self.dragSessionActive = true
                     self.onDragStateChanged?(true)
                     let session = self.beginDraggingSession(with: [item], event: event, source: self)
@@ -301,13 +300,9 @@ struct CardPointerRegion: NSViewRepresentable {
             }
         }
         func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation { .copy }
-        func draggingSession(_ session: NSDraggingSession, movedTo screenPoint: NSPoint) {
-            CardDragPresentation.shared.move(to: screenPoint)
-        }
         func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
             dragSessionActive = false
             cancelHold()
-            CardDragPresentation.shared.finish()
             onDragStateChanged?(false)
         }
         func ignoreModifierKeys(for session: NSDraggingSession) -> Bool { true }

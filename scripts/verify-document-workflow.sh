@@ -8,5 +8,6 @@ xcrun swiftc -parse-as-library -target "$(uname -m)-apple-macos15.6" \
   -I "$products" "$project_root/Tests/DocumentWorkflowVerification.swift" \
   "$products/SenseFlow.app/Contents/MacOS/SenseFlow.debug.dylib" \
   -Xlinker -rpath -Xlinker "$products/SenseFlow.app/Contents/MacOS" \
+  -Xlinker -rpath -Xlinker "$products/SenseFlow.app/Contents/Frameworks" \
   -o "$verification_output/verify-document-workflow"
 "$verification_output/verify-document-workflow" "$verification_output" "${@:3}"

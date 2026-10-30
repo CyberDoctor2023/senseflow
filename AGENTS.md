@@ -1,6 +1,6 @@
 # SenseFlow 工作入口
 
-原生 macOS 剪贴板：方便找回与预览，快捷键执行自定义工具。SwiftUI 内容 + AppKit 窗口 + SQLite；实际部署版本查工程 target，勿照抄旧文档版本。
+原生 macOS 剪贴板：方便找回与预览，快捷键呼出历史，长按预览与编辑。SwiftUI 内容 + AppKit 窗口 + SQLite；实际部署版本查工程 target，勿照抄旧文档版本。
 
 ## 任务入口
 

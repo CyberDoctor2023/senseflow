@@ -152,7 +152,6 @@ struct Constants {
         static let onboarding: CGSize = CGSize(width: 550, height: 500)
         static let settingsWindow: CGSize = CGSize(width: 500, height: 350)
         static let settingsForm: CGSize = CGSize(width: 500, height: 400)
-        static let promptToolEditor: CGSize = CGSize(width: 500, height: 450)
         static let smartRecommendation: CGSize = CGSize(width: 400, height: 300)
         static let communityBrowser: CGSize = CGSize(width: 800, height: 600)
         static let hotKeyRecorder: CGFloat = 400
@@ -205,18 +204,8 @@ struct Constants {
         static let sectionSpacing: CGFloat = 12
     }
 
-    // MARK: - PromptTools Editor Constants
 
-    struct PromptToolsEditor {
-        static let tagPaddingHorizontal: CGFloat = 4
-        static let tagPaddingVertical: CGFloat = 2
-        static let tagCornerRadius: CGFloat = 4
-        static let tagFontSize: CGFloat = 11
-        static let tagSpacing: CGFloat = 4
-        static let editorTopPadding: CGFloat = 12
-        static let fieldWidth: CGFloat = 100
-        static let fieldMinWidth: CGFloat = 120
-    }
+
 
     // MARK: - Typography Constants
 

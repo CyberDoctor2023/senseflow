@@ -252,38 +252,7 @@ import SwiftUI
         windowLifecycle.hideWindow(window)
     }
 
-    /// 隐藏窗口并激活前一个应用（用于粘贴场景，也使用对称动画）
-    /// Captures the external application before an asynchronous tool request starts.
-    func toolOutputTarget() -> NSRunningApplication? { appStateManager.pasteTarget }
-
-    /// Restores an explicitly selected result target and pastes without submitting its input.
-    func fillToolResult(_ text: String, into target: NSRunningApplication) async -> Bool {
-        guard !target.isTerminated,
-              target.processIdentifier != ProcessInfo.processInfo.processIdentifier,
-              AccessibilityManager.shared.checkAccessibilityPermission() else { return false }
-        return await withCheckedContinuation { continuation in
-            let paste = {
-                guard !target.isTerminated, target.activate() else {
-                    continuation.resume(returning: false)
-                    return
-                }
-                Task { @MainActor in
-                    await self.clipboardWriter.write(text)
-                    AutoPasteManager.shared.performAutoPaste(expectedTargetPID: target.processIdentifier,
-                        expectedChangeCount: NSPasteboard.general.changeCount) { sent in
-                            continuation.resume(returning: sent)
-                        }
-                }
-            }
-            if !isPinned, let window = activeWindow {
-                documentPreview.historyHidden()
-                if !windowLifecycle.hideWindow(window, completion: paste) {
-                    continuation.resume(returning: false)
-                }
-            } else { paste() }
-        }
-    }
-
+    /// Hides history before restoring the application receiving the selected content.
     func hideWindowImmediately() {
         historyActions.quickLookURL = nil
         guard let window = activeWindow else { return }

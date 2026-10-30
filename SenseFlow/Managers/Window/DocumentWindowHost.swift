@@ -80,8 +80,11 @@ enum DocumentCloseChoice { case save, keepDraft, discard, cancel }
         let contentHeight = imageAspectRatio.map { width / max($0, 0.1) } ?? (hasMoreText ? visible.height * 0.7 : sampleHeight)
         let historyWindow = NSApp.windows.first(where: { workspace.contains($0) && $0.isVisible && $0.frame.contains(CGPoint(x: anchor.midX, y: anchor.midY)) })
         let historyTop = historyWindow?.frame.maxY ?? anchor.maxY
-        let target = CentralToolLayout.frames(visible: visible, historyTop: historyTop,
-                                              desiredHeight: min(contentHeight + 100, visible.height * 0.55)).preview
+        let height = min(max(220, contentHeight + 100), visible.height * 0.55)
+        let floor = min(historyTop + 24, visible.maxY - height - 24)
+        let target = CGRect(x: visible.midX - width / 2,
+                            y: max(visible.minY + 24, max(floor, visible.midY - height / 2)),
+                            width: width, height: height)
         let sourceFrame = anchor.width > 0 && anchor.height > 0 ? anchor : target
         let reducedMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let start = sourceFrame
@@ -187,14 +190,6 @@ enum DocumentCloseChoice { case save, keepDraft, discard, cancel }
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool { onClose?(); return false }
 
-    /// Keeps pointer traversal between the preview and its tool dock inside the preview interaction.
-    func containsToolDock(_ point: CGPoint) -> Bool {
-        NSApp.windows.contains { window in
-            guard window.isVisible, workspace.contains(window), let frame = workspace.toolSurfaceFrame(in: window) else { return false }
-            return frame.insetBy(dx: -8, dy: -8).contains(point)
-        }
-    }
-
     private func startDismissMonitoring() {
         guard localDismissMonitor == nil, panel?.isVisible == true else { return }
         localDismissMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
@@ -221,7 +216,7 @@ enum DocumentCloseChoice { case save, keepDraft, discard, cancel }
         }
         if let target, workspace.contains(target) {
             let local = target.convertPoint(fromScreen: point)
-            if workspace.containsCard(in: target, at: local) || workspace.containsTool(in: target, at: local) {
+            if workspace.containsCard(in: target, at: local) {
                 return false
             }
         }
