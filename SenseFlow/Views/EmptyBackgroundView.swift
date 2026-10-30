@@ -34,6 +34,7 @@ struct EmptyBackgroundView: View {
     @AppStorage("filter_text_enabled") private var textEnabled = true
     @AppStorage("filter_image_enabled") private var imageEnabled = true
     @AppStorage("filter_code_enabled") private var codeEnabled = true
+    @AppStorage("filter_link_enabled") private var linkEnabled = true
     @AppStorage("filter_screenshot_enabled") private var screenshotEnabled = false
     @AppStorage("filter_recording_enabled") private var recordingEnabled = false
 
@@ -46,6 +47,7 @@ struct EmptyBackgroundView: View {
         if textEnabled { result.append(("doc.text", "文字", .text)) }
         if imageEnabled { result.append(("photo", "图片", .image)) }
         if codeEnabled { result.append(("chevron.left.forwardslash.chevron.right", "代码", .code)) }
+        if linkEnabled { result.append(("link", "链接", .link)) }
         if screenshotEnabled { result.append(("viewfinder", "截图", .screenshot)) }
         if recordingEnabled { result.append(("video", "录屏", .recording)) }
         return result
@@ -250,6 +252,7 @@ struct EmptyBackgroundView: View {
         case .text: return .textFilter
         case .image: return .imageFilter
         case .code: return .codeFilter
+        case .link: return .linkFilter
         case .screenshot: return .screenshotFilter
         case .recording: return .recordingFilter
         }

@@ -32,6 +32,7 @@ struct ClipboardSettingsView: View {
     @AppStorage("filter_text_enabled") private var textEnabled = true
     @AppStorage("filter_image_enabled") private var imageEnabled = true
     @AppStorage("filter_code_enabled") private var codeEnabled = true
+    @AppStorage("filter_link_enabled") private var linkEnabled = true
     @AppStorage("filter_screenshot_enabled") private var screenshotEnabled = false
     @AppStorage("filter_recording_enabled") private var recordingEnabled = false
     @ObservedObject private var captures = SystemCaptureService.shared
@@ -41,6 +42,7 @@ struct ClipboardSettingsView: View {
                 SettingsToggle(title: "文字", isOn: $textEnabled)
                 SettingsToggle(title: "图片", isOn: $imageEnabled)
                 SettingsToggle(title: "代码", isOn: $codeEnabled)
+                SettingsToggle(title: "链接", isOn: $linkEnabled)
                 SettingsToggle(title: "截图", isOn: $screenshotEnabled, detail: "按系统标记检索，读取受保护文件时需授权。")
                 SettingsToggle(title: "录屏", isOn: $recordingEnabled, detail: "按系统标记检索，读取受保护文件时需授权。")
                 Text("截图与录屏默认关闭，开启后自动检索，关闭后保留已导入的历史。")

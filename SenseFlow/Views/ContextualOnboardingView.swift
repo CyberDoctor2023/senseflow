@@ -11,7 +11,7 @@ extension EnvironmentValues {
     }
 }
 
-enum OnboardingTarget: Hashable { case history, search, pin, textFilter, imageFilter, codeFilter, screenshotFilter, recordingFilter, card(Int64), edit, save, preview }
+enum OnboardingTarget: Hashable { case history, search, pin, textFilter, imageFilter, codeFilter, linkFilter, screenshotFilter, recordingFilter, card(Int64), edit, save, preview }
 struct OnboardingAnchor {
     let bounds: Anchor<CGRect>
     let radius: CGFloat

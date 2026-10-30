@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Presentation-only categories; code remains losslessly stored as text.
-enum ClipboardContentFilter: String, CaseIterable { case text, image, code, screenshot, recording }
+enum ClipboardContentFilter: String, CaseIterable { case text, image, code, link, screenshot, recording }
 
 /// Owns refresh/search generations. Older results can never replace a newer query.
 @MainActor final class ClipboardListViewModel: ObservableObject {
@@ -23,9 +23,18 @@ enum ClipboardContentFilter: String, CaseIterable { case text, image, code, scre
         case .text: return item.type == .text
         case .image: return item.type == .image
         case .code: return item.type == .text && looksLikeCode(item.textContent ?? "")
+        case .link: return item.type == .text && containsWebLink(item.textContent ?? "")
         case .screenshot: return item.captureKind == .screenshot
         case .recording: return item.type == .video && item.captureKind == .recording
         }
+    }
+    // Compile once; inspect loaded summaries only, without fetching full documents or URLs.
+    private static let webLinkPattern = try? NSRegularExpression(
+        pattern: #"(?i)(?<![\w@])(?:https?://|www\.)(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:[a-z]{2,63}|xn--[a-z0-9-]+)(?=[:/\s?#]|$|[.,;!，。；！）)])"#
+    )
+    private static func containsWebLink(_ text: String) -> Bool {
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return webLinkPattern?.firstMatch(in: text, range: range) != nil
     }
     private static func looksLikeCode(_ text: String) -> Bool {
         let sample = String(text.prefix(2048))
