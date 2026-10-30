@@ -1,47 +1,46 @@
-//
-//  SettingsFormContainer.swift
-//  SenseFlow
-//
-//  Created on 2026-01-29
-//
-
 import SwiftUI
 
-/// 统一的设置页面容器，解决以下问题：
-/// 1. 左侧 sidebar 高度跳动问题：通过 ScrollView + 固定 frame 确保一致的布局高度
-/// 2. 顶部横线问题：通过精确的 padding 控制移除不必要的分隔线
+/// One scrolling surface and a readable content width for everyday preferences.
 struct SettingsFormContainer<Content: View>: View {
-    let content: Content
-
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
-
+    @ViewBuilder let content: Content
     var body: some View {
         ScrollView {
-            content
+            VStack(alignment: .leading, spacing: 20) { content }
+                .frame(maxWidth: 640, alignment: .leading)
+                .padding(.horizontal, 28).padding(.bottom, 28)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
-                .padding(.top, Constants.spacing20)
-                .padding(.horizontal, Constants.spacing20)
-                .padding(.bottom, Constants.spacing20)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        // 移除自定义背景，让 Form 使用系统默认背景和材质
     }
 }
 
-#Preview {
-    SettingsFormContainer {
-        Form {
-            Section("示例") {
-                Toggle("选项 1", isOn: .constant(true))
-                Toggle("选项 2", isOn: .constant(false))
-            }
+/// Consistent grouping; page content owns bindings and actions.
+struct SettingsSection<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.pingFang(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary).padding(.horizontal, 4)
+            VStack(alignment: .leading, spacing: 12) { content }
+                .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(nsColor: .controlBackgroundColor), in: .rect(cornerRadius: 10))
         }
-        .formStyle(.grouped)
     }
-    .frame(
-        width: Constants.DialogWindow.settingsForm.width,
-        height: Constants.DialogWindow.settingsForm.height
-    )
+}
+
+/// Aligns switches to one trailing column, independent of label length.
+struct SettingsToggle: View {
+    let title: String
+    @Binding var isOn: Bool
+    var detail: String? = nil
+    var body: some View {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                if let detail { Text(detail).font(.pingFang(.caption)).foregroundStyle(.secondary) }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            Toggle(title, isOn: $isOn).labelsHidden().toggleStyle(.switch)
+                .accessibilityLabel(title)
+        }
+    }
 }

@@ -1,72 +1,84 @@
-//
-//  GeneralSettingsView.swift
-//  SenseFlow
-//
-//  Created by Claude on 2026-01-16.
-//  Updated on 2026-02-10 for @Observable + @Bindable pattern
-//
-
 import SwiftUI
 import ServiceManagement
 
-/// 通用设置（使用 @Bindable 接收 SettingsModel 双向绑定）
+/// App lifecycle and update preferences only.
 struct GeneralSettingsView: View {
     @Bindable var model: SettingsModel
-
+    @State private var launchError: String?
     var body: some View {
-        Form {
-            Section(Strings.GeneralSettings.historySection) {
-                Stepper(Strings.GeneralSettings.historyLimitLabel(model.historyLimit),
-                       value: $model.historyLimit,
-                       in: BusinessRules.ClipboardHistory.minLimit...BusinessRules.ClipboardHistory.maxLimit,
-                       step: BusinessRules.ClipboardHistory.limitStep)
-                    .help(Strings.GeneralSettings.historyLimitHelp)
-                    .onChange(of: model.historyLimit) { _, newValue in
-                        DatabaseManager.shared.enforceHistoryLimit(limit: newValue)
-                    }
+        SettingsFormContainer {
+            SettingsSection(title: "启动") {
+                SettingsToggle(title: "登录时启动", isOn: $model.launchAtLogin)
+                    .onChange(of: model.launchAtLogin) { _, enabled in setLaunchAtLogin(enabled) }
+                if let launchError { Text(launchError).font(.pingFang(.caption)).foregroundStyle(.red) }
             }
-
-            Section(Strings.GeneralSettings.behaviorSection) {
-                Toggle(Strings.GeneralSettings.autoPasteToggle, isOn: $model.autoPasteEnabled)
-                    .help(Strings.GeneralSettings.autoPasteHelp)
-
-                Toggle(Strings.GeneralSettings.launchAtLoginToggle, isOn: $model.launchAtLogin)
-                    .help(Strings.GeneralSettings.launchAtLoginHelp)
-                    .onChange(of: model.launchAtLogin) { _, newValue in
-                        setLaunchAtLogin(enabled: newValue)
-                    }
-            }
+            AppUpdateSettingsView()
         }
-        .formStyle(.grouped)
-        .compatibleControlSize()
     }
-
-    /// 设置开机自启动
-    private func setLaunchAtLogin(enabled: Bool) {
+    private func setLaunchAtLogin(_ enabled: Bool) {
         do {
-            if enabled {
-                try SMAppService.mainApp.register()
-                print("✅ 开机自启动已启用")
-            } else {
-                try SMAppService.mainApp.unregister()
-                print("✅ 开机自启动已禁用")
-            }
+            if enabled { try SMAppService.mainApp.register() }
+            else { try SMAppService.mainApp.unregister() }
+            launchError = nil
         } catch {
-            print("❌ 开机自启动设置失败: \(error)")
-            // 回滚状态
-            model.launchAtLogin = !enabled
+            model.launchAtLogin = SMAppService.mainApp.status == .enabled
+            launchError = "未能更新启动设置，请在系统设置的登录项中检查。"
         }
     }
 }
 
-#Preview {
-    if #available(macOS 26.0, *) {
-        GeneralSettingsView(model: SettingsModel())
-            .frame(
-                width: DesignSystem.WindowSize.settingsWindow.width,
-                height: DesignSystem.WindowSize.settingsWindow.height
-            )
-    } else {
-        Text(Strings.GeneralSettings.previewRequirement)
+/// History categories and system capture collection share one settings destination.
+struct ClipboardSettingsView: View {
+    @AppStorage("filter_text_enabled") private var textEnabled = true
+    @AppStorage("filter_image_enabled") private var imageEnabled = true
+    @AppStorage("filter_code_enabled") private var codeEnabled = true
+    @AppStorage("filter_link_enabled") private var linkEnabled = true
+    @AppStorage("filter_screenshot_enabled") private var screenshotEnabled = false
+    @AppStorage("filter_recording_enabled") private var recordingEnabled = false
+    @ObservedObject private var captures = SystemCaptureService.shared
+    var body: some View {
+        SettingsFormContainer {
+            SettingsSection(title: "分类筛选") {
+                SettingsToggle(title: "文字", isOn: $textEnabled)
+                SettingsToggle(title: "图片", isOn: $imageEnabled)
+                SettingsToggle(title: "代码", isOn: $codeEnabled)
+                SettingsToggle(title: "链接", isOn: $linkEnabled)
+                SettingsToggle(title: "截图", isOn: $screenshotEnabled, detail: "按系统标记检索，读取受保护文件时需授权。")
+                SettingsToggle(title: "录屏", isOn: $recordingEnabled, detail: "按系统标记检索，读取受保护文件时需授权。")
+                Text("截图与录屏默认关闭，开启后自动检索，关闭后保留已导入的历史。")
+                    .font(.pingFang(.caption)).foregroundStyle(.secondary)
+            }
+            if screenshotEnabled || recordingEnabled {
+                Text(captures.errorMessage ?? captures.status).font(.pingFang(.caption))
+                    .foregroundStyle(captures.errorMessage == nil ? Color.secondary : Color.red)
+            }
+        }
+        .onChange(of: screenshotEnabled) { _, _ in
+            captures.refreshCollection()
+        }
+        .onChange(of: recordingEnabled) { _, _ in
+            captures.refreshCollection()
+        }
+    }
+}
+
+/// Visual preferences do not own clipboard collection or application lifecycle.
+struct AppearanceSettingsView: View {
+    @AppStorage(HistoryCardMotion.preferenceKey) private var cardMotion = HistoryCardMotion.wave
+    var body: some View {
+        SettingsFormContainer {
+            SettingsSection(title: "卡片动效") {
+                Picker("卡片动效", selection: $cardMotion) {
+                    ForEach(HistoryCardMotion.allCases, id: \.self) { motion in
+                        Text(motion.title).tag(motion)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                Text(cardMotion == .classic ? "保留经典的悬停与按压效果。" : "鼠标附近的卡片抬高，形成平滑的起伏。")
+                    .font(.pingFang(.caption))
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 }

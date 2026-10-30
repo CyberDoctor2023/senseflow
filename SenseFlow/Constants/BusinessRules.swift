@@ -10,20 +10,7 @@ import Foundation
 
 /// 业务规则 - 核心业务逻辑的配置值
 enum BusinessRules {
-    /// Smart 推荐相关
-    enum SmartRecommendation {
-        static let highConfidenceThreshold: Double = 0.7
-        static let mediumConfidenceThreshold: Double = 0.5
-        static let percentageMultiplier = 100
-    }
 
-    /// 剪贴板历史
-    enum ClipboardHistory {
-        static let defaultLimit = 200
-        static let minLimit = 50
-        static let maxLimit = 500
-        static let limitStep = 50
-    }
 
     /// 文件存储
     enum FileStorage {
@@ -69,36 +56,7 @@ enum BusinessRules {
         ]
     }
 
-    /// Langfuse 配置
-    enum Langfuse {
-        static let defaultSyncInterval: Double = 300.0  // 秒 (5分钟)
-        static let defaultActiveLabel = "production"
-        static let defaultStatus = "未同步"
 
-        static let minSyncInterval: Double = 60.0   // 1分钟
-        static let maxSyncInterval: Double = 3600.0 // 60分钟
-        static let syncIntervalStep: Double = 60.0  // 1分钟步进
-        static let secondsPerMinute: Double = 60.0
-
-        static let oneMinute: Double = 60.0
-        static let oneHour: Double = 3600.0
-        static let oneDay: Double = 86400.0
-        static let twoSeconds: UInt64 = 2_000_000_000
-        static let threeSeconds: UInt64 = 3_000_000_000
-
-        static let promptCacheTTL: Foundation.TimeInterval = 60.0  // 1分钟
-        static let serviceCacheTTL: Foundation.TimeInterval = 300.0  // 5分钟
-        static let defaultPromptLimit = 100
-        static let defaultPageLimit = 50
-
-        static let syncing = "同步中..."
-        static let success = "同步成功"
-        static func failure(_ error: String) -> String { "同步失败: \(error)" }
-        static let justNow = "刚刚"
-        static func minutesAgo(_ minutes: Int) -> String { "\(minutes) 分钟前" }
-        static func hoursAgo(_ hours: Int) -> String { "\(hours) 小时前" }
-        static func daysAgo(_ days: Int) -> String { "\(days) 天前" }
-    }
 
     /// HTTP 状态码
     enum HTTPStatus {

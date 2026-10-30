@@ -10,6 +10,11 @@ import SwiftUI
 
 /// Design constants and style parameters - Aligned with Apple Landmarks patterns
 struct Constants {
+    /// Shared raised-state feedback for cards and category controls.
+    enum SelectionFeedback {
+        static let scale: CGFloat = 1.04
+        static let duration: Double = 0.28
+    }
     // MARK: - Window and Container Constants
 
     /// Clipboard list window - floating panel with Liquid Glass
@@ -34,7 +39,7 @@ struct Constants {
         static let minWidth: CGFloat = 600
         static let minHeight: CGFloat = 500
         static let defaultWidth: CGFloat = 850
-        static let defaultHeight: CGFloat = 500
+        static let defaultHeight: CGFloat = 620
         static let cornerRadius: CGFloat = 20
     }
 
@@ -147,7 +152,6 @@ struct Constants {
         static let onboarding: CGSize = CGSize(width: 550, height: 500)
         static let settingsWindow: CGSize = CGSize(width: 500, height: 350)
         static let settingsForm: CGSize = CGSize(width: 500, height: 400)
-        static let promptToolEditor: CGSize = CGSize(width: 500, height: 450)
         static let smartRecommendation: CGSize = CGSize(width: 400, height: 300)
         static let communityBrowser: CGSize = CGSize(width: 800, height: 600)
         static let hotKeyRecorder: CGFloat = 400
@@ -200,18 +204,8 @@ struct Constants {
         static let sectionSpacing: CGFloat = 12
     }
 
-    // MARK: - PromptTools Editor Constants
 
-    struct PromptToolsEditor {
-        static let tagPaddingHorizontal: CGFloat = 4
-        static let tagPaddingVertical: CGFloat = 2
-        static let tagCornerRadius: CGFloat = 4
-        static let tagFontSize: CGFloat = 11
-        static let tagSpacing: CGFloat = 4
-        static let editorTopPadding: CGFloat = 12
-        static let fieldWidth: CGFloat = 100
-        static let fieldMinWidth: CGFloat = 120
-    }
+
 
     // MARK: - Typography Constants
 
@@ -236,13 +230,6 @@ struct Constants {
     struct TextEditor {
         static let height: CGFloat = 100
         static let minHeight: CGFloat = 150
-    }
-
-    struct Onboarding {
-        static let iconSize: CGFloat = 32
-        static let topPadding: CGFloat = 32
-        static let bottomPadding: CGFloat = 24
-        static let horizontalPadding: CGFloat = 32
     }
 
     // MARK: - Border and Stroke Constants

@@ -11,6 +11,14 @@ import SwiftUI
 // MARK: - Glass Effect Compatibility
 
 extension View {
+    /// Keeps the horizontal history viewport free of separate system edge-glass strips.
+    @ViewBuilder func compatibleHiddenHorizontalScrollEdges() -> some View {
+        if #available(macOS 26, *) {
+            self.scrollEdgeEffectHidden(true, for: .horizontal)
+        } else {
+            self
+        }
+    }
     /// Applies glass effect on macOS 26+ or thin material on macOS 13-25
     ///
     /// This modifier provides backward compatibility for the Liquid Glass effect.
@@ -39,12 +47,21 @@ extension View {
     /// - Parameter cornerRadius: Corner radius for the rounded rectangle (default: 20)
     /// - Returns: A view with version-appropriate glass/material effect
     @ViewBuilder
-    func compatibleGlassEffect(cornerRadius: CGFloat = 20) -> some View {
+    func compatibleGlassEffect(cornerRadius: CGFloat = 20, interactive: Bool = false) -> some View {
         if #available(macOS 26, *) {
-            self.glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius))
+            self.glassEffect(interactive ? .regular.interactive() : .regular, in: RoundedRectangle(cornerRadius: cornerRadius))
         } else {
             self.background(.thinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
         }
+    }
+}
+
+extension View {
+    /// Groups native glass surfaces without adding a second opaque material layer.
+    @ViewBuilder func compatibleGlassGroup(spacing: CGFloat = 12) -> some View {
+        if #available(macOS 26, *) {
+            GlassEffectContainer(spacing: spacing) { self }
+        } else { self }
     }
 }
 
@@ -237,3 +254,26 @@ extension View {
  .compatibleControlSize()
  ```
  */
+
+/// The app's single text family, with shared macOS text-style sizing.
+extension Font {
+    static func pingFang(size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        let suffix = weight == .ultraLight ? "Ultralight" : weight == .thin ? "Thin" : weight == .light ? "Light" : weight == .medium ? "Medium" : weight == .semibold || weight == .bold || weight == .heavy || weight == .black ? "Semibold" : "Regular"
+        return .custom("PingFangSC-" + suffix, fixedSize: size)
+    }
+    static func pingFang(_ style: Font.TextStyle, weight: Font.Weight? = nil) -> Font {
+        let size: CGFloat
+        switch style {
+        case .largeTitle: size = 34
+        case .title: size = 28
+        case .title2: size = 22
+        case .title3: size = 20
+        case .headline, .body: size = 13
+        case .callout, .subheadline: size = 12
+        case .footnote: size = 11
+        case .caption, .caption2: size = 10
+        @unknown default: size = 13
+        }
+        return pingFang(size: size, weight: weight ?? (style == .headline ? .semibold : .regular))
+    }
+}

@@ -60,15 +60,16 @@ final class WindowLifecycle {
     }
 
     /// 隐藏窗口（对称的下滑 + 淡出动画）
-    func hideWindow(_ window: NSPanel, completion: (() -> Void)? = nil) {
-        guard window.isVisible else { return }
-        guard !isHiding else { return }  // 防止动画期间重复触发
+    @discardableResult
+    func hideWindow(_ window: NSPanel, completion: (() -> Void)? = nil) -> Bool {
+        guard window.isVisible, !isHiding else { return false }
 
         isHiding = true
         FloatingWindowAnimator.animateSlideOut(window: window) { [weak self] in
             self?.isHiding = false
             completion?()
         }
+        return true
     }
 
     /// 执行跨屏幕切换（使用 A/B 窗口池，避免创建新窗口）

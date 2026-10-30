@@ -21,21 +21,11 @@ enum Strings {
         static let reset = "恢复默认"
     }
 
-    /// Onboarding
-    enum Onboarding {
-        static let title = "欢迎使用 \(AppConstants.productName)"
-        static let subtitle = "我们需要一些权限来提供最佳体验"
-        static let mandatorySection = "必需权限"
-        static let optionalSection = "Smart 功能权限（可选）"
-        static let skipHint = "（点击跳过后下次启动不再显示）"
-    }
-
     /// 权限
     enum Permissions {
         static let accessibility = "辅助功能权限"
         static let accessibilityDesc = "用于自动粘贴"
         static let screenRecording = "录屏权限"
-        static let screenRecordingDesc = "用于 Smart 功能截图"
         static let notification = "通知权限"
         static let notificationDesc = "用于剪切板操作状态反馈"
     }
@@ -52,13 +42,7 @@ enum Strings {
         static let helpText = "点击录制按钮或直接点击上方输入框，然后按下想要设置的快捷键组合"
     }
 
-    /// Smart 推荐
-    enum SmartRecommendation {
-        static let title = "Smart Recommendation"
-        static let toolLabel = "Tool:"
-        static let reasonLabel = "Why:"
-        static let confidenceLabel = "Confidence:"
-    }
+
 
     /// 快捷键冲突
     enum HotKeyConflict {
@@ -85,29 +69,8 @@ enum Strings {
         static let later = "稍后"
     }
 
-    /// 自动粘贴
-    enum AutoPaste {
-        static let manualPasteMessage = "请手动按 Cmd+V 粘贴"
-        static let permissionRequired = "需要辅助功能权限才能自动粘贴。\n\n您可以在系统设置中授予权限。"
-        static let understood = "知道了"
-    }
-
-    /// 窗口标题
-    enum WindowTitles {
-        static let onboardingSetup = "\(AppConstants.productName) 设置向导"
-    }
-
     /// 通用设置
     enum GeneralSettings {
-        static let historySection = "历史记录"
-        static func historyLimitLabel(_ limit: Int) -> String {
-            "历史记录上限: \(limit) 条"
-        }
-        static let historyLimitHelp = "最多保存多少条剪贴板历史记录"
-
-        static let behaviorSection = "行为"
-        static let autoPasteToggle = "启用自动粘贴"
-        static let autoPasteHelp = "点击卡片后自动粘贴到目标应用（需要 Accessibility 权限）"
         static let launchAtLoginToggle = "开机自启动"
         static let launchAtLoginHelp = "系统启动时自动运行 \(AppConstants.productName)"
 
@@ -122,7 +85,6 @@ enum Strings {
         static let accessibilityDescription = "用于自动粘贴功能"
         static let screenRecordingGranted = "录屏权限已授予"
         static let screenRecordingDenied = "录屏权限未授予"
-        static let screenRecordingDescription = "用于 Smart 功能截图"
         static let notificationGranted = "通知权限已授予"
         static let notificationDenied = "通知权限未授予"
         static let notificationDescription = "用于剪切板操作状态反馈"
@@ -182,92 +144,10 @@ enum Strings {
         static let previewFallback = "需要 macOS 13.0+"
     }
 
-    /// Smart AI 设置
-    enum SmartAISettings {
-        static let title = "Smart AI"
-        static let subtitle = "智能剪贴板助手"
-        static let description = "Smart AI 可以根据剪贴板内容智能推荐合适的 Prompt Tool，帮助您更高效地处理文本。"
 
-        static let configSection = "基本配置"
-        static let enableToggle = "启用 Smart AI"
-        static let enableHelp = "开启后，复制内容时会自动分析并推荐合适的工具"
-        static let shortcutLabel = "快捷键"
-        static let shortcutKey = "⌘⌃V"
-        static let shortcutHelp = "使用此快捷键快速调用 Smart AI"
-        static let lightweightToggle = "轻量模式"
-        static let lightweightDescription = "仅发送文本内容，不包含截图（节省 API 调用成本）"
 
-        static let permissionSection = "权限状态"
-        static let screenRecordingTitle = "屏幕录制权限"
-        static let permissionGranted = "已授予"
-        static let permissionDenied = "未授予"
-        static let openGuideButton = "打开权限引导"
-        static let permissionDescription = "Smart AI 需要屏幕录制权限来截取当前窗口内容"
 
-        static let previewFallback = "需要 macOS 13.0+"
-    }
-
-    /// Prompt Tools 设置
-    enum PromptToolsSettings {
-        static let aiServiceSection = "AI 服务配置"
-        static let aiServicePicker = "AI 服务"
-        static let aiServiceHelp = "选择用于 Prompt Tools 的 AI 服务"
-        static let apiKeyPlaceholder = "API Key"
-        static func apiKeyHelp(_ serviceName: String) -> String {
-            "输入 \(serviceName) 的 API Key"
-        }
-        static let modelPlaceholder = "模型名称（例如 gpt-4.1 / gemini-2.5-pro）"
-        static func modelHelp(_ serviceName: String, _ fallback: String) -> String {
-            "设置 \(serviceName) 的模型（留空将使用默认：\(fallback)）"
-        }
-        static let saveButtonDefault = "保存配置"
-        static let saveButtonSaved = "已保存"
-        static let saveButtonHelp = "保存当前服务的 API Key 与模型配置"
-        static let unsavedChanges = "有未保存的更改"
-        static let testConnectionButton = "测试连接"
-        static let testConnectionHelp = "测试 API 连接是否正常"
-        static let connectionSuccess = "连接成功"
-        static let codexAuthTitle = "Codex 登录状态"
-        static let codexLoginButton = "登录 Codex"
-        static let codexRefreshButton = "刷新状态"
-        static let codexSignOutButton = "退出登录"
-        static let codexLoginOpening = "正在打开 Codex 登录..."
-        static let codexLoginStarted = "Codex 已登录"
-        static let codexLoginFailedPrefix = "Codex 登录失败"
-        static let codexSignedOut = "Codex 已退出"
-        static let codexSignOutFailedPrefix = "Codex 退出失败"
-        static let codexAccountPrefix = "账户"
-        static let codexPlanPrefix = "计划"
-        static let codexExpiryPrefix = "过期时间"
-        static let toolsSection = "Prompt Tools"
-        static let emptyToolsMessage = "暂无自定义 Tool，点击下方按钮添加"
-        static let toolCopySuffix = " (副本)"
-        static let previewFallback = "需要 macOS 13.0+"
-    }
 
     /// 开发者选项
-    enum DeveloperOptions {
-        static let sectionHeader = "Langfuse 集成"
-        static let langfuseTitle = "Langfuse"
-        static let langfuseDescription = "连接到 Langfuse 进行 LLM 调用追踪和分析"
 
-        static let publicKeyPlaceholder = "Public Key"
-        static let secretKeyPlaceholder = "Secret Key"
-
-        static func syncIntervalText(_ minutes: Int) -> String {
-            "同步间隔: \(minutes) 分钟"
-        }
-
-        static let labelFieldTitle = "Active Label"
-        static let labelPlaceholder = "production"
-
-        static let saveButtonDefault = "保存密钥"
-        static let saveButtonSaved = "已保存"
-        static let saveButtonHelp = "保存 Langfuse 公钥和私钥"
-        static let unsavedChanges = "有未保存的更改"
-
-        static let syncNowButton = "立即同步"
-
-        static let previewFallback = "需要 macOS 13.0+"
-    }
 }

@@ -43,6 +43,11 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     /// OCR 识别的文本（仅图片类型，v0.2 新增）
     let ocrText: String?
 
+    /// Summary payloads must never be used directly for copy or paste.
+    let isSummary: Bool
+    let captureKind: SystemCaptureKind?
+    let origin: HistoryOrigin
+
     // MARK: - Computed Properties
 
     /// 获取预览文本（用于 UI 显示）
@@ -60,12 +65,17 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
                 return Self.sampleText(ocr, maxLength: BusinessRules.ClipboardItem.ocrPreviewLength)
             }
             return "[图片]"
+        case .video: return "[录屏]"
         }
     }
 
     /// 获取相对时间描述
     var relativeTimeString: String {
-        let now = Date()
+        Self.relativeTimeString(timestamp: timestamp)
+    }
+
+    /// Minute-level labels shared by cards and previews without a seconds timer.
+    static func relativeTimeString(timestamp: Int64, now: Date = Date()) -> String {
         let itemDate = Date(timeIntervalSince1970: TimeInterval(timestamp))
         let interval = now.timeIntervalSince(itemDate)
 
@@ -90,7 +100,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
 
     // MARK: - Initialization
 
-    init(id: Int64, uniqueId: String, type: ClipboardItemType, textContent: String?, imageData: Data?, blobPath: String?, timestamp: Int64, appName: String, appPath: String?, ocrText: String? = nil) {
+    init(id: Int64, uniqueId: String, type: ClipboardItemType, textContent: String?, imageData: Data?, blobPath: String?, timestamp: Int64, appName: String, appPath: String?, ocrText: String? = nil, isSummary: Bool = false, captureKind: SystemCaptureKind? = nil, origin: HistoryOrigin = .clipboard) {
         self.id = id
         self.uniqueId = uniqueId
         self.type = type
@@ -101,33 +111,12 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.appName = appName
         self.appPath = appPath
         self.ocrText = ocrText
+        self.isSummary = isSummary
+        self.captureKind = captureKind
+        self.origin = origin
     }
 
     // MARK: - Helper Methods
-
-    /// 获取图片（从内存或文件系统）
-    func getImage() -> NSImage? {
-        if let imageData = imageData {
-            return NSImage(data: imageData)
-        } else if let blobPath = blobPath {
-            // 从文件系统读取大图片
-            let url = URL(fileURLWithPath: blobPath)
-            if let data = try? Data(contentsOf: url) {
-                return NSImage(data: data)
-            }
-        }
-        return nil
-    }
-
-    /// 生成内容的 SHA256 hash（用于去重）
-    static func generateUniqueId(from content: String) -> String {
-        return content.sha256()
-    }
-
-    /// 生成图片数据的 SHA256 hash
-    static func generateUniqueId(from imageData: Data) -> String {
-        return imageData.sha256()
-    }
 
     /// 文本采样（学习 Deck 的 index-limited 技术）
     /// - Parameters:
