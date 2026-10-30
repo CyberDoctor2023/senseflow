@@ -22,3 +22,5 @@
 - 隔离旧版本检查在真实 Sparkle 窗口显示“0.6.5 可供下载，现在版本 0.6.4”。误在该隔离程序尝试安装会因宿主名 UpdateVerification.app 与归档 SenseFlow.app 不同而拒绝（日志明确 searched UpdateVerification.(app|pkg) / no suitable install），不能将此解释为生产 Ed25519 签名失败。已关闭验证进程。后续同名安装验证遇到 CUA timeout/ScreenCaptureKit -3811，停止该测试并恢复正式应用；不宣称已完成 Sparkle 两版本安装/重启。
 - 已补测完整 Sparkle 安装：使用官方 SPUUserDriver API 自动驱动测试宿主（同名 SenseFlow.app、同 bundle ID、同签名、旧版本 0.6.4，独立 out 路径），真实从线上下载 0.6.5。日志包含“OK: EdDSA signature is correct for update”，依次完成提取、ready、installing，宿主退出后 Sparkle 以 0.6.5 正式二进制替换并自动重新启动；版本、二进制 cmp、严格签名核验通过。未覆盖正式应用为旧版本。证据 `out/2026-10-31-updater-fix/installation-api-test.log`；已终止测试副本并恢复 /Applications 正式应用。
 - Sparkle 日志提示后台常驻应用未实现 gentle reminders，已在 0.6.6 补齐官方 delegate 与菜单栏提示，不再仅依赖藏在后台的窗口。
+- 最终发布：GitHub Actions 41095531728 成功，latest 为 v0.6.6。重新从公开 latest URL 下载的 feed、DMG 与 Bundle 0.6.6/build 2026103102、公钥签名一致；本机已安装并启动同身份 0.6.6，自动检查偏好为 true，CUA 读取到实际主界面。相关附件保存在 `out/2026-10-31-updater-fix/published-066/`。
+- 最终源码隔离验证再次确认关闭偏好跨启动保留、自动下载关闭、gentle reminders 支持及四个 Objective-C delegate selector 实际注册。0.6.6 编译成功，运行未出现新的后台常驻提醒未实现警告。未来新版本的后台提醒尚未跨真实一天周期验收，不将即时检查当作一天周期实测。
