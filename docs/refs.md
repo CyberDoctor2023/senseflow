@@ -1,5 +1,10 @@
 # 外部资料引用
 
+## 2026-10-31 更新检查与发布
+- Sparkle 官方 SPUUpdater：https://sparkle-project.org/documentation/api-reference/Classes/SPUUpdater.html 。自动检查设置由 Sparkle 持久化；启动后的后台检查与手动检查分开，周期由调度器管理。
+- Sparkle 官方发布：https://sparkle-project.org/documentation/publishing/ 。appcast 的 version 对应 CFBundleVersion，shortVersionString 对应显示版本；更新归档必须通过应用内置公钥校验。Context7 与本地 2.10.0 官方头文件已核对。
+- Sparkle 官方设置：https://sparkle-project.org/documentation/customization/ 。SUEnableAutomaticChecks 提供默认值，SUScheduledCheckInterval 设置周期，SUAllowsAutomaticUpdates 禁止自动下载安装；不在每次启动覆盖用户检查偏好。
+
 本文档记录项目中使用的外部资料、API 文档、参考项目等。
 
 **格式**: 链接 + 简短要点（最多 10 行）

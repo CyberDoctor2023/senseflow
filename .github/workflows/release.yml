@@ -1,9 +1,22 @@
 name: Build & Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag matching the checked-out Bundle version
+        required: true
+        type: string
   push:
     tags:
       - 'v*'
+
+concurrency:
+  group: senseflow-release
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
 
 jobs:
   build:
@@ -12,6 +25,10 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate release tag
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
 
       - name: Select Xcode
         run: |
@@ -81,8 +98,7 @@ jobs:
             -configuration Release \
             -arch arm64 \
             -derivedDataPath build \
-            MARKETING_VERSION="${GITHUB_REF_NAME#v}" \
-            CURRENT_PROJECT_VERSION="$(date -u +%Y%m%d)${GITHUB_RUN_NUMBER}" \
+            MARKETING_VERSION="${RELEASE_TAG#v}" \
             ONLY_ACTIVE_ARCH=NO \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
@@ -117,17 +133,22 @@ jobs:
           APP_PATH="build/Build/Products/Release/SenseFlow.app"
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
           codesign -dvv "$APP_PATH" 2>&1 | sed -n '1,40p'
+          codesign -dv "$APP_PATH" 2>&1 | grep -qx 'TeamIdentifier=FPVWZ792P2'
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP_PATH/Contents/Info.plist")" = com.senseflow.SenseFlow
 
       - name: Create DMG
         run: |
           set -euo pipefail
           APP_PATH="build/Build/Products/Release/SenseFlow.app"
-          DMG_NAME="SenseFlow-${GITHUB_REF_NAME}-arm64.dmg"
+          DMG_NAME="senseflow-${RELEASE_TAG}-arm64.dmg"
 
           # Create temporary DMG directory
           mkdir -p dmg_staging
           cp -R "$APP_PATH" dmg_staging/
           ln -s /Applications dmg_staging/Applications
+          mkdir -p dmg_staging/.background
+          cp installer/background.png dmg_staging/.background/background.png
+          cp installer/FinderLayout dmg_staging/.DS_Store
 
           # Create DMG
           hdiutil create -volname "SenseFlow" \
@@ -149,15 +170,28 @@ jobs:
           cp "$DMG_NAME" updates/
           printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | "$SPARKLE_TOOLS/bin/generate_appcast" \
             --ed-key-file - --maximum-deltas 0 \
-            --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/" \
+            --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/" \
             --link https://senseflow.top/ updates
+
+      - name: Validate release metadata and public-key signature
+        run: |
+          python3 scripts/validate-update-feed.py \
+            --app build/Build/Products/Release/SenseFlow.app \
+            --archive "$DMG_NAME" --feed updates/appcast.xml \
+            --tag "$RELEASE_TAG" --repository "$GITHUB_REPOSITORY"
+          shasum -a 256 "$DMG_NAME" > SHA256SUMS.txt
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          prerelease: false
           files: |
             ${{ env.DMG_NAME }}
             updates/appcast.xml
+            SHA256SUMS.txt
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
