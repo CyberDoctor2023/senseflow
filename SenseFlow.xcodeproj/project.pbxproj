@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C60111060000000000000001 /* VoiceInputSourceObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = C60111060000000000000002 /* VoiceInputSourceObserver.swift */; };
 		04BC7F422F189BF8006978CE /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = 04BC7F412F189BF8006978CE /* SQLite */; };
 		04BC7F462F18A84E006978CE /* ClipboardItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04BC7F452F18A84E006978CE /* ClipboardItem.swift */; };
 		04BC7F4A2F18A9C0006978CE /* DatabaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04BC7F492F18A9C0006978CE /* DatabaseManager.swift */; };
@@ -119,6 +120,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		C60111060000000000000002 /* VoiceInputSourceObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceInputSourceObserver.swift; sourceTree = "<group>"; };
 		024B4E2A3859D40070C3A57E /* EmptyBackgroundView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EmptyBackgroundView.swift; sourceTree = "<group>"; };
 		04BC7F452F18A84E006978CE /* ClipboardItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardItem.swift; sourceTree = "<group>"; };
 		04BC7F492F18A9C0006978CE /* DatabaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseManager.swift; sourceTree = "<group>"; };
@@ -572,6 +574,7 @@
 			children = (
 				AB1400010000000000000002 /* AppUpdateService.swift */,
 				04BC7F4B2F18AC00006978CE /* ClipboardMonitor.swift */,
+				C60111060000000000000002 /* VoiceInputSourceObserver.swift */,
 				04BC7F5A2F18AC10006978CE /* AppIconCache.swift */,
 				F8000000000000000000001 /* OCRService.swift */,
 				460F6A7AFCC56E5B9083D953 /* TextSelectionMonitor.swift */,
@@ -847,6 +850,7 @@
 				7600F314F1DB4FCFA9B777B2 /* AccessibilityManager.swift in Sources */,
 				24A9369FE9B5414E98444D5B /* AutoPasteManager.swift in Sources */,
 				04BC7F4C2F18AC00006978CE /* ClipboardMonitor.swift in Sources */,
+				C60111060000000000000001 /* VoiceInputSourceObserver.swift in Sources */,
 				04BC7F5B2F18AC10006978CE /* AppIconCache.swift in Sources */,
 				04BC7F4E2F18B100006978CE /* HotKeyManager.swift in Sources */,
 				04BC7F532F18B300006978CE /* ClipboardListView.swift in Sources */,

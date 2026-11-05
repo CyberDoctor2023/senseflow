@@ -34,13 +34,19 @@ class ClipboardMonitor {
     private var timer: Timer?
     private let capturePreparationQueue = DispatchQueue(label: "top.senseflow.clipboard-prepare", qos: .utility)
     private var captureGeneration = UUID()
+    // Accessed only on capturePreparationQueue to preserve ordering across preference changes.
+    private var captureDeliveryDeadline: UInt64 = 0
     private var lastChangeCount: Int = 0
     private let pasteboard: NSPasteboard
+    private let store: DatabaseManager?
+    private let preferences: UserDefaults
 
     // MARK: - Initialization
 
-    init(pasteboard: NSPasteboard = .general) {
+    init(pasteboard: NSPasteboard = .general, store: DatabaseManager? = nil, preferences: UserDefaults = .standard) {
         self.pasteboard = pasteboard
+        self.store = store
+        self.preferences = preferences
         lastChangeCount = pasteboard.changeCount
     }
 
@@ -50,6 +56,8 @@ class ClipboardMonitor {
     func startMonitoring() {
         // 停止已有的 timer
         stopMonitoring()
+
+        VoiceInputSourceObserver.shared.setEnabled(preferences.bool(forKey: UserDefaultsKeys.filterVoiceInput))
 
         // 创建新的 timer
         timer = Timer.scheduledTimer(
@@ -77,6 +85,7 @@ class ClipboardMonitor {
     /// 停止监听剪贴板
     func stopMonitoring() {
         captureGeneration = UUID()
+        VoiceInputSourceObserver.shared.setEnabled(false)
         timer?.invalidate()
         timer = nil
         logger.info("剪贴板监听已停止")
@@ -92,6 +101,7 @@ class ClipboardMonitor {
     // MARK: - Private Methods
 
     @objc private func checkPasteboard() {
+        VoiceInputSourceObserver.shared.setEnabled(preferences.bool(forKey: UserDefaultsKeys.filterVoiceInput))
         if pasteboardDidChange() {
             processPasteboardContent()
         }
@@ -282,7 +292,10 @@ class ClipboardMonitor {
     }
 
     private func handleTextContent(_ textContent: String, appInfo: (name: String, path: String?)) {
-        enqueueCapture(.init(type: .text, textContent: textContent, appName: appInfo.name, appPath: appInfo.path))
+        let version = pasteboard.changeCount
+        let marker = pasteboard.string(forType: NSPasteboard.PasteboardType("org.nspasteboard.source"))
+        enqueueCapture(.init(type: .text, textContent: textContent, appName: appInfo.name, appPath: appInfo.path),
+                       voiceSource: (version, marker))
     }
 
     private func handleFileURLs(_ urls: [URL], appInfo: (name: String, path: String?)) {
@@ -294,8 +307,10 @@ class ClipboardMonitor {
         }
     }
 
-    private func enqueueCapture(_ request: DatabaseManager.ClipboardItemInsertRequest) {
+    private func enqueueCapture(_ request: DatabaseManager.ClipboardItemInsertRequest,
+                                voiceSource: (changeCount: Int, bundleID: String?)? = nil) {
         let token = captureGeneration
+        let attributionDelay = preferences.bool(forKey: UserDefaultsKeys.filterVoiceInput) ? 0.15 : 0
         // All clipboard requests share preparation ordering, including images needing pixel hashes.
         capturePreparationQueue.async { [weak self] in
             var prepared = request
@@ -305,9 +320,17 @@ class ClipboardMonitor {
                 prepared = .init(type: .image, imageData: data, appName: request.appName,
                                  appPath: request.appPath, captureKind: .screenshot, contentIdentity: identity)
             }
-            DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let proposedDeadline = (DispatchTime.now() + attributionDelay).uptimeNanoseconds
+            self.captureDeliveryDeadline = max(self.captureDeliveryDeadline, proposedDeadline)
+            DispatchQueue.main.asyncAfter(deadline: DispatchTime(uptimeNanoseconds: self.captureDeliveryDeadline)) { [weak self] in
                 guard let self, token == captureGeneration else { return }
-                DatabaseManager.shared.enqueueCapture(prepared) { [weak self] success in
+                if let voiceSource, self.preferences.bool(forKey: UserDefaultsKeys.filterVoiceInput),
+                   VoiceInputSourceObserver.shared.shouldFilter(changeCount: voiceSource.changeCount,
+                                                                sourceBundleID: voiceSource.bundleID) {
+                    return
+                }
+                (self.store ?? DatabaseManager.shared).enqueueCapture(prepared) { [weak self] success in
                     if success { self?.notifyClipboardUpdate() }
                     else { self?.logger.warning("剪贴板保存失败") }
                 }

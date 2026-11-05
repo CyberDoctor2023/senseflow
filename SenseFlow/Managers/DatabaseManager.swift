@@ -44,13 +44,16 @@ class DatabaseManager {
     // Owned exclusively by storeQueue; pending originals stay in SQLite, not task closures.
     private var isRecognizingHistory = false
     private var recognitionCursor: Int64 = 0
+    private var fragmentCandidates: [(id: Int64, time: TimeInterval)] = []
+    private let preferences: UserDefaults
     private let blobs: BlobFileManager
     private let databaseURL: URL?
     private var openedDatabaseURL: URL?
     internal var onStoreQueue: Bool { DispatchQueue.getSpecific(key: queueKey) == true }
 
     /// A custom URL isolates integration verification from user history.
-    init(databaseURL: URL? = nil) {
+    init(databaseURL: URL? = nil, preferences: UserDefaults = .standard) {
+        self.preferences = preferences
         self.databaseURL = databaseURL
         self.blobs = databaseURL.map { BlobFileManager(directory: $0.deletingLastPathComponent().appendingPathComponent("blobs")) } ?? .shared
         storeQueue.setSpecific(key: queueKey, value: true)
@@ -70,7 +73,7 @@ class DatabaseManager {
     /// Capture ordering follows submissions to the single store owner.
     func enqueueCapture(_ request: ClipboardItemInsertRequest, completion: @escaping (Bool) -> Void) {
         storeQueue.async {
-            let success = self.insertItem(request)
+            let success = self.insertItem(request, organizeFragments: true)
             DispatchQueue.main.async { completion(success) }
         }
     }
@@ -110,6 +113,7 @@ class DatabaseManager {
             try migrateIfNeeded()
             try migrateCaptureMetadata()
             try createDocumentTables()
+            try createFragmentCoverageTable()
 
             print("✅ 数据库初始化成功: \(dbPath)")
 
@@ -204,8 +208,8 @@ class DatabaseManager {
     }
 
     /// 插入新条目（自动去重，重复内容移到最前面）
-    func insertItem(_ request: ClipboardItemInsertRequest) -> Bool {
-        if !onStoreQueue { return storeQueue.sync { self.insertItem(request) } }
+    func insertItem(_ request: ClipboardItemInsertRequest, organizeFragments: Bool = false) -> Bool {
+        if !onStoreQueue { return storeQueue.sync { self.insertItem(request, organizeFragments: organizeFragments) } }
         guard let db = db else { return false }
 
         do {
@@ -244,6 +248,12 @@ class DatabaseManager {
                         capturedAt: request.capturedAt
                     )
                 }
+                if organizeFragments {
+                    try organizeCapturedFragments(request, rowID: rowId, db: db)
+                }
+            }
+            if organizeFragments {
+                rememberFragmentCandidate(request, rowID: rowId)
             }
             print("✅ 插入成功: \(request.type.rawValue)")
 
@@ -255,6 +265,73 @@ class DatabaseManager {
             handleDatabaseError("插入失败", error: error)
             return false
         }
+    }
+
+    /// Coverage is reversible. Original rows remain available to document sessions and recovery.
+    private func createFragmentCoverageTable() throws {
+        guard let db, let location = openedDatabaseURL else { throw DocumentStoreError.unavailable }
+        let exists = (try db.scalar("SELECT count(*) FROM sqlite_master WHERE name='fragment_coverage'") as? Int64 ?? 0) > 0
+        guard !exists else { return }
+        let directory = location.deletingLastPathComponent().appendingPathComponent("migration-backups")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
+                                              attributes: [.posixPermissions: 0o700])
+        let backup = directory.appendingPathComponent("before-fragment-coverage-\(UUID().uuidString).sqlite")
+        try db.run("VACUUM INTO ?", backup.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)
+        try db.transaction {
+            try db.run("CREATE TABLE fragment_coverage (fragment_id INTEGER PRIMARY KEY, complete_id INTEGER NOT NULL)")
+            try db.run("CREATE INDEX fragment_coverage_complete ON fragment_coverage(complete_id)")
+            try db.run("CREATE INDEX IF NOT EXISTS document_versions_source ON document_versions(source_id)")
+            try db.run("CREATE INDEX IF NOT EXISTS document_versions_item ON document_versions(item_id)")
+        }
+    }
+
+    private var fragmentVisibilityPredicate: SQLite.Expression<Bool> {
+        guard preferences.bool(forKey: UserDefaultsKeys.replaceCoveredFragments) else { return Expression<Bool>(value: true) }
+        return Expression<Bool>(literal: """
+            (NOT EXISTS (SELECT 1 FROM fragment_coverage AS coverage
+                JOIN clipboard_history AS complete ON complete.id = coverage.complete_id
+                WHERE coverage.fragment_id = clipboard_history.id)
+            OR EXISTS (SELECT 1 FROM document_drafts WHERE source_id = clipboard_history.id)
+            OR EXISTS (SELECT 1 FROM document_versions WHERE source_id = clipboard_history.id OR item_id = clipboard_history.id))
+            """)
+    }
+
+    private func organizeCapturedFragments(_ request: ClipboardItemInsertRequest, rowID: Int64, db: Connection) throws {
+        guard preferences.bool(forKey: UserDefaultsKeys.replaceCoveredFragments),
+              request.type == .text, request.origin == .clipboard, request.appPath != nil,
+              let complete = request.textContent, complete.utf8.count <= 65536 else { return }
+        // A deliberate new copy makes a previously covered fragment visible again.
+        try db.run("DELETE FROM fragment_coverage WHERE fragment_id = ?", rowID)
+        let now = ProcessInfo.processInfo.systemUptime
+        for candidate in fragmentCandidates where candidate.id != rowID && now - candidate.time <= 120 {
+            guard let old = try db.pluck(historyTable.filter(id == candidate.id)),
+                  old[appName] == request.appName, old[appPath] == request.appPath,
+                  let fragment = old[textContent], fragment.count >= 4, fragment.count <= 4096,
+                  complete.utf8.count > fragment.utf8.count,
+                  complete.range(of: fragment, options: .literal) != nil else { continue }
+            let protected = try db.scalar("""
+                SELECT EXISTS(SELECT 1 FROM document_drafts WHERE source_id = ?)
+                    OR EXISTS(SELECT 1 FROM document_versions WHERE source_id = ? OR item_id = ?)
+                """, candidate.id, candidate.id, candidate.id) as? Int64 ?? 0
+            guard protected == 0 else { continue }
+            // Flatten chains so deleting the complete record reveals every original fragment.
+            try db.run("UPDATE fragment_coverage SET complete_id = ? WHERE complete_id = ?", rowID, candidate.id)
+            try db.run("INSERT INTO fragment_coverage(fragment_id, complete_id) VALUES (?, ?) ON CONFLICT(fragment_id) DO UPDATE SET complete_id=excluded.complete_id", candidate.id, rowID)
+        }
+    }
+
+    private func rememberFragmentCandidate(_ request: ClipboardItemInsertRequest, rowID: Int64) {
+        guard preferences.bool(forKey: UserDefaultsKeys.replaceCoveredFragments) else {
+            fragmentCandidates.removeAll()
+            return
+        }
+        let now = ProcessInfo.processInfo.systemUptime
+        fragmentCandidates.removeAll { $0.id == rowID || now - $0.time > 120 }
+        guard request.type == .text, request.origin == .clipboard,
+              let text = request.textContent, text.utf8.count <= 65536 else { return }
+        fragmentCandidates.append((rowID, now))
+        if fragmentCandidates.count > 50 { fragmentCandidates.removeFirst(fragmentCandidates.count - 50) }
     }
 
     private func validateAndGenerateUniqueId(type: ClipboardItemType, textContent: String?, imageData: Data?) throws -> String {
@@ -376,7 +453,7 @@ class DatabaseManager {
         guard let db = db else { return [] }
 
         do {
-            let query = historyTable
+            let query = historyTable.filter(fragmentVisibilityPredicate)
                 .order(timestamp.desc)
                 .limit(limit)
 
@@ -434,7 +511,10 @@ class DatabaseManager {
                 }
             }
 
-            try db.run(query.delete())
+            try db.transaction {
+                try db.run("DELETE FROM fragment_coverage WHERE fragment_id = ? OR complete_id = ?", itemId, itemId)
+                try db.run(query.delete())
+            }
             print("✅ 已删除记录 ID: \(itemId)")
 
             NotificationCenter.default.post(name: .clipboardDidUpdate, object: nil)
@@ -451,6 +531,7 @@ class DatabaseManager {
 
         do {
             try db.transaction {
+                try db.run("DELETE FROM fragment_coverage")
                 try db.run(historyTable.delete())
                 try db.run("DELETE FROM document_drafts")
                 try db.run("DELETE FROM document_versions")
@@ -489,6 +570,7 @@ class DatabaseManager {
         guard let db else { throw DocumentStoreError.unavailable }
         let excerpt = Expression<String?>(literal: "substr(text_content, 1, 1025)")
         var selection = historyTable.select(id, uniqueId, type, excerpt, blobPath, timestamp, appName, appPath, captureKind, origin)
+            .filter(fragmentVisibilityPredicate)
         if !query.isEmpty {
             let pattern = "%\(query)%"
             selection = selection.filter(textContent.like(pattern) || appName.like(pattern) || ocrText.like(pattern))

@@ -666,3 +666,7 @@ Apple Doc MCP核对withAnimation(_:completionCriteria:_:completion:)在所有动
 - 2026-10-19 AppKit `NSApplication.didBecomeActiveNotification`：应用完成激活后发送，用于显式凭证操作返回原设置窗口。Apple Doc MCP 已核对。https://developer.apple.com/documentation/appkit/nsapplication/didbecomeactivenotification
 
 - 2026-10-19 Apple TN3127：隐私授权通过 designated requirement 识别应用，开发与分发签名身份可能不共享权限。https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements
+
+## 2026-11-06：基础智能来源识别调研
+
+见 [BASIC_INTELLIGENCE_2026-11-06.md](BASIC_INTELLIGENCE_2026-11-06.md)，记录 NSPasteboard 来源约定、Apple 事件来源 PID、微信输入法本机快照与未验证边界。正文清理不是本次来源过滤需求。

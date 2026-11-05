@@ -82,3 +82,36 @@ struct AppearanceSettingsView: View {
         }
     }
 }
+
+/// Independent collection preferences with reversible fragment presentation.
+struct BasicIntelligenceSettingsView: View {
+    @AppStorage(UserDefaultsKeys.filterVoiceInput) private var filterVoiceInput = false
+    @AppStorage(UserDefaultsKeys.replaceCoveredFragments) private var replaceCoveredFragments = false
+    @State private var sourceStatus = ""
+
+    var body: some View {
+        SettingsFormContainer {
+            SettingsSection(title: "采集整理") {
+                SettingsToggle(title: "自动过滤无用内容", isOn: $filterVoiceInput,
+                               detail: "跳过微信输入法为语音输入自动写入剪贴板的内容。")
+                if filterVoiceInput {
+                    Text(sourceStatus).font(.pingFang(.caption)).foregroundStyle(.secondary)
+                }
+                SettingsToggle(title: "完整片段覆盖", isOn: $replaceCoveredFragments,
+                               detail: "同一应用两分钟内的新文本完全包含短片段时，仅显示完整文本。关闭后可查看原片段。")
+            }
+        }
+        .onAppear { updateSourceObservation() }
+        .onChange(of: filterVoiceInput) { _, _ in updateSourceObservation() }
+        .onChange(of: replaceCoveredFragments) { _, _ in
+            NotificationCenter.default.post(name: .clipboardDidUpdate, object: nil)
+        }
+    }
+
+    private func updateSourceObservation() {
+        VoiceInputSourceObserver.shared.setEnabled(filterVoiceInput)
+        sourceStatus = VoiceInputSourceObserver.shared.isObserving
+            ? "已启用来源进程识别，支持微信输入法。"
+            : "来源进程识别暂不可用，请检查辅助功能权限。目前仅能识别带来源标记的内容。"
+    }
+}
