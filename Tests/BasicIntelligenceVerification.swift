@@ -11,9 +11,24 @@ import SQLite
         print("PASS \(message)")
     }
 
-    @MainActor static func main() async throws {
+    @MainActor private static var verificationWindow: NSWindow?
+
+    @MainActor static func main() {
         setbuf(stdout, nil)
         _ = NSApplication.shared
+        Task { @MainActor in
+            do {
+                try await runVerification()
+                if verificationWindow == nil { NSApplication.shared.terminate(nil) }
+            } catch {
+                print("VERIFICATION FAILED: \(error)")
+                exit(1)
+            }
+        }
+        NSApplication.shared.run()
+    }
+
+    @MainActor private static func runVerification() async throws {
         let outputDirectory = CommandLine.arguments.dropFirst().first.map { URL(fileURLWithPath: $0) }
             ?? Bundle.main.bundleURL.deletingLastPathComponent()
         let directory = outputDirectory.appendingPathComponent(UUID().uuidString)
@@ -173,19 +188,18 @@ import SQLite
         monitor.stopMonitoring()
         if CommandLine.arguments.contains("--ui") || CommandLine.arguments.count == 1 {
             NSApplication.shared.setActivationPolicy(.regular)
-            NSApplication.shared.finishLaunching()
             let window = NSWindow(contentRect: NSRect(x: 200, y: 200, width: 850, height: 620),
                                   styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
             window.title = "SenseFlow 基础智能验证"
             window.isReleasedWhenClosed = false
             window.contentView = NSHostingView(rootView: SettingsView().environment(SettingsModel()))
+            verificationWindow = window
             window.makeKeyAndOrderFront(nil)
             print("UI_READY window=\(window.windowNumber)")
             Timer.scheduledTimer(withTimeInterval: 300, repeats: false) { _ in
                 print("UI_FINISHED")
                 NSApplication.shared.terminate(nil)
             }
-            withExtendedLifetime(window) { NSApplication.shared.run() }
         }
         print("ALL CHECKS PASSED")
     }
