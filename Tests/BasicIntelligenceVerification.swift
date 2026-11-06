@@ -153,6 +153,25 @@ import SQLite
         try require(persisted.contains { $0.textContent == "重新复制片段" }, "visibility survives database reopen")
         let backups = try FileManager.default.contentsOfDirectory(atPath: directory.appendingPathComponent("migration-backups").path)
         try require(backups.contains { $0.hasPrefix("before-fragment-coverage-") }, "pre-change backup exists")
+        let pasteboard = NSPasteboard.withUniqueName()
+        defer { pasteboard.releaseGlobally() }
+        let monitor = ClipboardMonitor(pasteboard: pasteboard, store: store)
+        monitor.startMonitoring()
+        defer { monitor.stopMonitoring() }
+        let fragments = ["监听入口片段甲", "监听入口片段乙", "完整文本包含监听入口片段甲，以及监听入口片段乙。"]
+        for text in fragments {
+            pasteboard.clearContents()
+            try require(pasteboard.setString(text, forType: .string), "test pasteboard write succeeds")
+            try await Task.sleep(for: .seconds(1.1))
+            try require(try rowID(text) > 0, "monitor persists each original")
+        }
+        visible = try await texts()
+        try require(visible.contains(fragments[2]) && !visible.contains(fragments[0]) && !visible.contains(fragments[1]),
+                    "monitor consolidates two separate fragments into one complete entry")
+        preferences.set(false, forKey: UserDefaultsKeys.replaceCoveredFragments)
+        visible = try await texts()
+        try require(fragments.allSatisfy { visible.contains($0) }, "monitor originals reappear when consolidation is disabled")
+        monitor.stopMonitoring()
         if CommandLine.arguments.contains("--ui") || CommandLine.arguments.count == 1 {
             NSApplication.shared.setActivationPolicy(.regular)
             let window = NSWindow(contentRect: NSRect(x: 200, y: 200, width: 850, height: 620),

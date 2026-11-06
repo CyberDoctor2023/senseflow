@@ -77,3 +77,9 @@
 ## 焦点变化后的新增证据
 
 用户观察到保持输入焦点时直接插入文字，失去焦点后才出现对应剪贴板记录。最新采样 latest-voice-sample.log 在用户报告附近记录到 changeCount 200，类型仅 public.utf8-plain-text 与 NSStringPboardType，org.nspasteboard.source 缺失。后续 Cmd+V 的来源 PID 为 0，userData 为 0，无法映射微信输入法进程。该记录支持继续按焦点切换复现，但时间关联仍不能单独证明写入进程身份。当前生产 PID 关联方案尚未证明能过滤这条实际路径，需继续研究可用来源证据。当前运行应用为 /Applications/SenseFlow.app 0.6.6，本轮功能尚未安装，因此其历史变化不构成本轮过滤验收。
+
+## 本地安装前的监听入口验收
+
+按用户要求先补齐生产 ClipboardMonitor 入口测试，使用专用 NSPasteboard、隔离 SQLite 与独立偏好，实际轮询采集两个互不包含的短片段及包含两者的完整文本。断言每段原文已入库、列表仅显示完整文本、关闭开关后全部恢复。monitor-consolidation-verification.log 退出码 0，ALL CHECKS PASSED。
+
+测试通过后运行既有 scripts/install-development-app.py，旧应用保留于用户废纸篓，替换 /Applications/SenseFlow.app 并启动。install.log 记录稳定开发签名安装成功，codesign --verify --deep --strict 通过。CUA 读取已安装应用历史窗口，确认启动正常。使用 Debug 构建作为本地验证版。今后本项目功能完成并验证后包含本地替换与启动检查。
