@@ -59,3 +59,9 @@
 ## 恢复后的界面验收
 
 本次恢复目标后，CUA 已能读取独立 FinalVerification 应用并显示基础智能页面。实际点击验证两个开关初始关闭、分别开启、切换通用页再返回均保持开启、单独关闭来源过滤时完整片段覆盖仍开启，最后两个开关均恢复关闭。隔离应用开启过滤后显示来源进程识别不可用提示，未授予该应用额外权限。终端来源采样器当前 tap=true、trusted=true，真实微信语音对照仍需采样。此项界面证据取代此前 -3811 阻挡状态，尚不能证明真实语音过滤生效。
+
+## 用户参与的真实语音对照
+
+用户确认使用 Mac 微信输入法，并在 Codex 分别完成短句与较长语音输入。会话事件 tap 与应用接收阶段 annotated tap 均成功创建（trusted=true），后者每 2 ms 检查剪贴板版本。样本期间未观察到相应 changeCount 变化或可归属微信的自动粘贴事件。其他普通复制/粘贴已有记录，来源标记缺失，观察到的普通粘贴 PID 为 0。不能据此认定微信所有输入路径都不使用剪贴板，也不能认定当前 PID 关联实现覆盖微信真实剪贴板提交路径。
+
+这次样本没有形成待过滤记录，实际微信剪贴板写入过滤验收继续待定。证据为 source-probe-resumed.log、annotated-source-probe.log、detailed-source-probe.log，均仅记录类型、版本和事件来源元数据。新增 Apple 官方参考为 CGEventTapLocation.cgAnnotatedSessionEventTap，该位置是事件已注释并流向应用的阶段。https://developer.apple.com/documentation/coregraphics/cgeventtaplocation/cgannotatedsessioneventtap
