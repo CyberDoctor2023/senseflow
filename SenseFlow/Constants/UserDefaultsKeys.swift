@@ -19,7 +19,6 @@ enum UserDefaultsKeys {
     static let imageOCREnabled = "image_ocr_enabled"
     static let filterAppList = "filter_app_list"
 
-    static let filterVoiceInput = "basic_intelligence_filter_voice_input"
     static let replaceCoveredFragments = "basic_intelligence_replace_covered_fragments"
 
     // HotKey
