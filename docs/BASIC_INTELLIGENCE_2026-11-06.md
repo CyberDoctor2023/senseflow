@@ -65,3 +65,7 @@
 用户确认使用 Mac 微信输入法，并在 Codex 分别完成短句与较长语音输入。会话事件 tap 与应用接收阶段 annotated tap 均成功创建（trusted=true），后者每 2 ms 检查剪贴板版本。样本期间未观察到相应 changeCount 变化或可归属微信的自动粘贴事件。其他普通复制/粘贴已有记录，来源标记缺失，观察到的普通粘贴 PID 为 0。不能据此认定微信所有输入路径都不使用剪贴板，也不能认定当前 PID 关联实现覆盖微信真实剪贴板提交路径。
 
 这次样本没有形成待过滤记录，实际微信剪贴板写入过滤验收继续待定。证据为 source-probe-resumed.log、annotated-source-probe.log、detailed-source-probe.log，均仅记录类型、版本和事件来源元数据。新增 Apple 官方参考为 CGEventTapLocation.cgAnnotatedSessionEventTap，该位置是事件已注释并流向应用的阶段。https://developer.apple.com/documentation/coregraphics/cgeventtaplocation/cgannotatedsessioneventtap
+
+## 焦点变化后的新增证据
+
+用户观察到保持输入焦点时直接插入文字，失去焦点后才出现对应剪贴板记录。最新采样 latest-voice-sample.log 在用户报告附近记录到 changeCount 200，类型仅 public.utf8-plain-text 与 NSStringPboardType，org.nspasteboard.source 缺失。后续 Cmd+V 的来源 PID 为 0，userData 为 0，无法映射微信输入法进程。该记录支持继续按焦点切换复现，但时间关联仍不能单独证明写入进程身份。当前生产 PID 关联方案尚未证明能过滤这条实际路径，需继续研究可用来源证据。当前运行应用为 /Applications/SenseFlow.app 0.6.6，本轮功能尚未安装，因此其历史变化不构成本轮过滤验收。
